@@ -872,6 +872,10 @@ class CobblerXMLRPCInterface:
         if edit_type == "add":
             is_subobject = object_type == "profile" and "parent" in attributes
             handle = self.new_item(object_type, token, is_subobject=is_subobject)
+            if object_type == "repo" and attributes.has_key("breed") :
+                objtime , obj = self.object_cache[handle]
+                obj.from_datastruct( { 'breed':attributes["breed"] } )
+                self.object_cache[handle] = (objtime , obj.make_clone())
         else:
             handle = self.get_item_handle(object_type, object_name)
 
