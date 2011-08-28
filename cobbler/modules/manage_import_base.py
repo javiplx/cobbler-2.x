@@ -70,12 +70,12 @@ class ImportBaseManager:
         self.settings      = config.settings()
         self.repos         = config.repos()
         self.templar       = templar.Templar(config)
-        if not __breed_str__ :
+        if not self.__breed_str__ :
             raise NotImplemented( "set breed string" , self )
 
     # required function for import modules
     def what(self):
-        return "import/%s" % __breed_str__
+        return "import/%s" % self.__breed_str__
 
     # required function for import modules
     def check_for_signature(self,path,cli_breed):
