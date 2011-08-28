@@ -278,6 +278,9 @@ class BootCLI:
             if opt(options, "name") == "":
                 print "--name is required"
                 sys.exit(1)
+            if object_type == "repo" and object_action == "add" and opt(options, "mirror") == "":
+                print "--mirror is required"
+                sys.exit(1)
             self.remote.xapi_object_edit(object_type, options.name, object_action, utils.strip_none(vars(options), omit_none=True), self.token)
         elif object_action == "getks":
             if object_type == "profile":
