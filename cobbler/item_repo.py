@@ -67,7 +67,7 @@ class Repo(item.Item):
         elif seed_data.get( 'breed' ) == "apt" :
             obj = AptRepo(config)
         else:
-            obj = Repo(config)
+            obj = VoidRepo(config)
         obj.from_datastruct(seed_data)
         return obj
     Factory = staticmethod(Factory)
@@ -77,6 +77,8 @@ class Repo(item.Item):
     def make_clone(self):
         ds = self.to_datastruct()
         cloned = self.Factory(self.config,ds)
+        if isinstance(cloned, VoidRepo):
+            raise CX("Wrong Repo cloning. Product is a VoidRepo object")
         return cloned
 
     def get_fields(self):
@@ -106,8 +108,6 @@ class Repo(item.Item):
               self.set_arch("ia64")
            elif mirror.find("s390") != -1:
               self.set_arch("s390x")
-        if not self.breed :
-            self._guess_breed()
         return True
 
     def set_keep_updated(self,keep_updated):
@@ -182,12 +182,8 @@ class Repo(item.Item):
         return True
 
     def set_breed(self,breed):
-        valid_breeds = VALID_REPO_BREEDS
-        if breed and breed.lower() in valid_breeds:
-            self.breed = breed.lower()
-            return True
-        nicer = ", ".join(valid_breeds)
-        raise CX(_("invalid value for --breed (%s), must be one of %s, different breeds have different levels of support") % (breed, nicer))
+      if breed != self.breed:
+        raise CX(_("Setting breed on %s to an invalid value (%s)") % (self,breed))
 
     def set_os_version(self,os_version):
         if os_version:
@@ -224,35 +220,23 @@ class Repo(item.Item):
         if self.mirror is None:
             raise CX("Error with repo %s - mirror is required" % (self.name))
 
+class VoidRepo ( Repo ) :
+
+    breed = "void"
+
 class RsyncRepo ( Repo ) :
 
     breed = "rsync"
-
-    def set_breed(self,breed):
-      if breed != self.breed:
-        raise CX(_("Setting breed on %s to an invalid value (%s)") % (self,breed))
 
 class YumRepo ( Repo ) :
 
     breed = "yum"
 
-    def set_breed(self,breed):
-      if breed != self.breed:
-        raise CX(_("Setting breed on %s to an invalid value (%s)") % (self,breed))
-
 class RhnRepo ( Repo ) :
 
     breed = "rhn"
 
-    def set_breed(self,breed):
-      if breed != self.breed:
-        raise CX(_("Setting breed on %s to an invalid value (%s)") % (self,breed))
-
 class AptRepo ( Repo ) :
 
     breed = "apt"
-
-    def set_breed(self,breed):
-      if breed != self.breed:
-        raise CX(_("Setting breed on %s to an invalid value (%s)") % (self,breed))
 
