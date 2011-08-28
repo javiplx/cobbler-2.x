@@ -145,8 +145,9 @@ class ImportBaseManager:
         if self.arch is not None and self.arch != "":
             self.arch = self.arch.lower()
             if self.arch in ( 'x86' , 'i486', 'i586', 'i686' ) :
-                # be consistent
                 self.arch = "i386"
+            if self.arch in ( 'amd64' ,) :
+                self.arch = "x86_64"
             if self.arch not in self.get_valid_arches():
                 utils.die(self.logger,"arch must be one of: %s" % string.join(self.get_valid_arches(),", "))
 
