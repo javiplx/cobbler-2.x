@@ -58,7 +58,9 @@ class Repo(item.Item):
     COLLECTION_TYPE = "repo"
 
     def Factory(config,seed_data):
-        if seed_data.get( 'breed' ) == "yum" :
+        if seed_data.get( 'breed' ) == "rsync" :
+            obj = RsyncRepo(config)
+        elif seed_data.get( 'breed' ) == "yum" :
             obj = YumRepo(config)
         elif seed_data.get( 'breed' ) == "rhn" :
             obj = RhnRepo(config)
@@ -222,20 +224,34 @@ class Repo(item.Item):
         if self.mirror is None:
             raise CX("Error with repo %s - mirror is required" % (self.name))
 
+class RsyncRepo ( Repo ) :
+
+    breed = "rsync"
+
+    def set_breed(self,breed):
+      if breed != self.breed:
+        raise CX(_("Setting breed on %s to an invalid value (%s)") % (self,breed))
+
 class YumRepo ( Repo ) :
+
     breed = "yum"
+
     def set_breed(self,breed):
       if breed != self.breed:
         raise CX(_("Setting breed on %s to an invalid value (%s)") % (self,breed))
 
 class RhnRepo ( Repo ) :
+
     breed = "rhn"
+
     def set_breed(self,breed):
       if breed != self.breed:
         raise CX(_("Setting breed on %s to an invalid value (%s)") % (self,breed))
 
 class AptRepo ( Repo ) :
+
     breed = "apt"
+
     def set_breed(self,breed):
       if breed != self.breed:
         raise CX(_("Setting breed on %s to an invalid value (%s)") % (self,breed))
