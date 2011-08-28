@@ -744,8 +744,7 @@ class ImportDebianUbuntuManager:
         #
         # NOTE : We cannot use ks_meta nor os_version because they get fixed at a later stage
 
-        repo = item_repo.Repo(main_importer.config)
-        repo.set_breed( "apt" )
+        repo = item_repo.AptRepo(main_importer.config)
         repo.set_arch( distro.arch )
         repo.set_keep_updated( False )
         repo.yumopts["--ignore-release-gpg"] = None
@@ -755,8 +754,7 @@ class ImportDebianUbuntuManager:
         # NOTE : The location of the mirror should come from timezone
         repo.set_mirror( "http://ftp.%s.debian.org/debian/dists/%s" % ( 'us' , '@@suite@@' ) )
 
-        security_repo = item_repo.Repo(main_importer.config)
-        security_repo.set_breed( "apt" )
+        security_repo = item_repo.AptRepo(main_importer.config)
         security_repo.set_arch( distro.arch )
         security_repo.set_keep_updated( False )
         security_repo.yumopts["--ignore-release-gpg"] = None
