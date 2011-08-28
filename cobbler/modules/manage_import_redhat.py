@@ -87,15 +87,16 @@ class ImportRedhatManager ( ImportBaseManager ) :
         return ["rsync", "rhn", "yum",]
 
     def get_release_files(self):
+      data2 = []
+      if self.get_pkgdir() :
         data = glob.glob(os.path.join(self.get_pkgdir(), "*release-*"))
-        data2 = []
         for x in data:
             b = os.path.basename(x)
             if b.find("fedora") != -1 or \
                b.find("redhat") != -1 or \
                b.find("centos") != -1:
                 data2.append(x)
-        return data2
+      return data2
 
     def get_install_tree(self, distro, base):
         dest_link = os.path.join(self.settings.webdir, "links", distro.name)
