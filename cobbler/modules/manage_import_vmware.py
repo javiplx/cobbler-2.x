@@ -243,10 +243,10 @@ class ImportVMWareManager:
 
         # find out if we can auto-create any repository records from the install tree
 
-        #if self.network_root is None:
-        #    self.logger.info("associating repos")
-        #    # FIXME: this automagic is not possible (yet) without mirroring
-        #    self.repo_finder(distros_added)
+        if self.network_root is None:
+            self.logger.info("associating repos")
+            # FIXME: this automagic is not possible (yet) without mirroring
+            self.repo_finder(distros_added)
 
         # find the most appropriate answer files for each profile object
 
@@ -322,125 +322,7 @@ class ImportVMWareManager:
         return
 
     def repo_finder(self, distros_added):
-        """
-        This routine looks through all distributions and tries to find
-        any applicable repositories in those distributions for post-install
-        usage.
-        """
-
-        for distro in distros_added:
-            self.logger.info("traversing distro %s" % distro.name)
-            # FIXME : Shouldn't decide this the value of self.network_root ?
-            if distro.kernel.find("ks_mirror") != -1:
-                basepath = os.path.dirname(distro.kernel)
-                top = self.get_rootdir()
-                self.logger.info("descent into %s" % top)
-                # FIXME : The location of repo definition is known from breed
-                os.path.walk(top, self.repo_scanner, distro)
-            else:
-                self.logger.info("this distro isn't mirrored")
-
-    def repo_scanner(self,distro,dirname,fnames):
-        """
-        This is an os.path.walk routine that looks for potential yum repositories
-        to be added to the configuration for post-install usage.
-        """
-
-        matches = {}
-        for x in fnames:
-            if x == "base" or x == "repodata":
-                self.logger.info("processing repo at : %s" % dirname)
-                # only run the repo scanner on directories that contain a comps.xml
-                gloob1 = glob.glob("%s/%s/*comps*.xml" % (dirname,x))
-                if len(gloob1) >= 1:
-                    if matches.has_key(dirname):
-                        self.logger.info("looks like we've already scanned here: %s" % dirname)
-                        continue
-                    self.logger.info("need to process repo/comps: %s" % dirname)
-                    self.process_comps_file(dirname, distro)
-                    matches[dirname] = 1
-                else:
-                    self.logger.info("directory %s is missing xml comps file, skipping" % dirname)
-                    continue
-
-    def process_comps_file(self, comps_path, distro):
-        """
-        When importing Fedora/EL certain parts of the install tree can also be used
-        as yum repos containing packages that might not yet be available via updates
-        in yum.  This code identifies those areas.
-        """
-
-        processed_repos = {}
-
-        masterdir = "repodata"
-        if not os.path.exists(os.path.join(comps_path, "repodata")):
-            # older distros...
-            masterdir = "base"
-
-        # figure out what our comps file is ...
-        self.logger.info("looking for %(p1)s/%(p2)s/*comps*.xml" % { "p1" : comps_path, "p2" : masterdir })
-        files = glob.glob("%s/%s/*comps*.xml" % (comps_path, masterdir))
-        if len(files) == 0:
-            self.logger.info("no comps found here: %s" % os.path.join(comps_path, masterdir))
-            return # no comps xml file found
-
-        # pull the filename from the longer part
-        comps_file = files[0].split("/")[-1]
-
-        try:
-            # store the yum configs on the filesystem so we can use them later.
-            # and configure them in the kickstart post, etc
-
-            counter = len(distro.source_repos)
-
-            # find path segment for yum_url (changing filesystem path to http:// trailing fragment)
-            seg = comps_path.rfind("ks_mirror")
-            urlseg = comps_path[seg+10:]
-
-            # write a yum config file that shows how to use the repo.
-            if counter == 0:
-                dotrepo = "%s.repo" % distro.name
-            else:
-                dotrepo = "%s-%s.repo" % (distro.name, counter)
-
-            fname = os.path.join(self.settings.webdir, "ks_mirror", "config", "%s-%s.repo" % (distro.name, counter))
-
-            repo_url = "http://@@http_server@@/cobbler/ks_mirror/config/%s-%s.repo" % (distro.name, counter)
-            repo_url2 = "http://@@http_server@@/cobbler/ks_mirror/%s" % (urlseg)
-
-            distro.source_repos.append([repo_url,repo_url2])
-
-            # NOTE: the following file is now a Cheetah template, so it can be remapped
-            # during sync, that's why we have the @@http_server@@ left as templating magic.
-            # repo_url2 is actually no longer used. (?)
-
-            config_file = open(fname, "w+")
-            config_file.write("[core-%s]\n" % counter)
-            config_file.write("name=core-%s\n" % counter)
-            config_file.write("baseurl=http://@@http_server@@/cobbler/ks_mirror/%s\n" % (urlseg))
-            config_file.write("enabled=1\n")
-            config_file.write("gpgcheck=0\n")
-            config_file.write("priority=$yum_distro_priority\n")
-            config_file.close()
-
-            # don't run creatrepo twice -- this can happen easily for Xen and PXE, when
-            # they'll share same repo files.
-
-            if not processed_repos.has_key(comps_path):
-                utils.remove_yum_olddata(comps_path)
-                #cmd = "createrepo --basedir / --groupfile %s %s" % (os.path.join(comps_path, masterdir, comps_file), comps_path)
-                cmd = "createrepo %s --groupfile %s %s" % (self.settings.createrepo_flags,os.path.join(comps_path, masterdir, comps_file), comps_path)
-                utils.subprocess_call(self.logger, cmd, shell=True)
-                processed_repos[comps_path] = 1
-                # for older distros, if we have a "base" dir parallel with "repodata", we need to copy comps.xml up one...
-                p1 = os.path.join(comps_path, "repodata", "comps.xml")
-                p2 = os.path.join(comps_path, "base", "comps.xml")
-                if os.path.exists(p1) and os.path.exists(p2):
-                    shutil.copyfile(p1,p2)
-
-        except:
-            self.logger.error("error launching createrepo (not installed?), ignoring")
-            utils.log_exc(self.logger)
+        self.logger.warning( "repo_finder magic not possible (yet) without mirroring" )
 
     def distro_adder(self,distros_added,dirname,fnames):
         """

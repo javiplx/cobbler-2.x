@@ -602,28 +602,7 @@ class ImportRedhatManager:
             self.profiles.add(profile,save=True)
 
             # Create a rescue image as well, if this is not a xen distro
-            # but only for red hat profiles
-
-            # this code disabled as it seems to be adding "-rescue" to
-            # distros that are /not/ rescue related, which is wrong.
-            # left as a FIXME for those who find this feature interesting.
-            #if name.find("-xen") == -1 and self.breed == "redhat":
-            #    rescue_name = 'rescue-' + name
-            #    existing_profile = self.profiles.find(name=rescue_name)
-            #
-            #    if existing_profile is None:
-            #        self.logger.info("creating new profile: %s" % rescue_name)
-            #        profile = self.config.new_profile()
-            #    else:
-            #        continue
-            #
-            #    profile.set_name(rescue_name)
-            #    profile.set_distro(name)
-            #    profile.set_virt_type("qemu")
-            #    profile.kernel_options['rescue'] = None
-            #    profile.kickstart = '/var/lib/cobbler/kickstarts/pxerescue.ks'
-            #
-            #    self.profiles.add(profile,save=True)
+            # but only for red hat profiles ??
 
         return distros_added
 
