@@ -56,6 +56,19 @@ class Repo(item.Item):
     TYPE_NAME = _("repo")
     COLLECTION_TYPE = "repo"
 
+    def Factory(config,seed_data):
+        if seed_data.get( 'breed' ) == "yum" :
+            obj = YumRepo(config)
+        elif seed_data.get( 'breed' ) == "rhn" :
+            obj = RhnRepo(config)
+        elif seed_data.get( 'breed' ) == "apt" :
+            obj = AptRepo(config)
+        else:
+            obj = Repo(config)
+        obj.from_datastruct(seed_data)
+        return obj
+    Factory = staticmethod(Factory)
+
     def make_clone(self):
         ds = self.to_datastruct()
         cloned = Repo(self.config)
@@ -195,4 +208,12 @@ class Repo(item.Item):
         if self.mirror is None:
             raise CX("Error with repo %s - mirror is required" % (self.name))
 
+class YumRepo ( Repo ) :
+    pass
+
+class RhnRepo ( Repo ) :
+    pass
+
+class AptRepo ( Repo ) :
+    pass
 
