@@ -25,13 +25,14 @@ import item
 from cexceptions import *
 from utils import _
 import time
-import codes
+
+VALID_REPO_BREEDS = ( "rsync", "rhn", "yum", "apt" )
 
 # this datastructure is described in great detail in item_distro.py -- read the comments there.
 
 FIELDS = [
   ["arch","",0,"Arch",True,"ex: i386, x86_64",['i386','x86_64','ia64','ppc','s390', 'noarch', 'src'],"str"],
-  ["breed","",0,"Breed",True,"",codes.VALID_REPO_BREEDS,"str"],
+  ["breed","",0,"Breed",True,"",VALID_REPO_BREEDS,"str"],
   ["comment","",0,"Comment",True,"Free form text description",0,"str"],
   ["ctime",0,0,"",False,"",0,"float"],
   ["depth",2,0,"",False,"",0,"float"],
@@ -69,6 +70,8 @@ class Repo(item.Item):
         return obj
     Factory = staticmethod(Factory)
 
+    breed = None
+
     def make_clone(self):
         ds = self.to_datastruct()
         cloned = self.Factory(self.config,ds)
@@ -78,8 +81,7 @@ class Repo(item.Item):
         return FIELDS
 
     def _guess_breed(self):
-        # backwards compatibility
-        if (self.breed == "" or self.breed is None):
+           # backwards compatibility
            if self.mirror.startswith("http://") or self.mirror.startswith("ftp://"):
               self.set_breed("yum")
            elif self.mirror.startswith("rhn://"):
@@ -102,7 +104,8 @@ class Repo(item.Item):
               self.set_arch("ia64")
            elif mirror.find("s390") != -1:
               self.set_arch("s390x")
-        self._guess_breed()
+        if not self.breed :
+            self._guess_breed()
         return True
 
     def set_keep_updated(self,keep_updated):
@@ -177,12 +180,24 @@ class Repo(item.Item):
         return True
 
     def set_breed(self,breed):
-        if breed:
-            return utils.set_repo_breed(self,breed)
+        valid_breeds = VALID_REPO_BREEDS
+        if breed and breed.lower() in valid_breeds:
+            self.breed = breed.lower()
+            return True
+        nicer = ", ".join(valid_breeds)
+        raise CX(_("invalid value for --breed (%s), must be one of %s, different breeds have different levels of support") % (breed, nicer))
 
     def set_os_version(self,os_version):
         if os_version:
-            return utils.set_repo_os_version(self,os_version)
+            self.os_version = os_version.lower()
+            if not self.breed :
+               raise CX(_("cannot set --os-version without setting --breed first"))
+            if not self.breed in VALID_REPO_BREEDS:
+               raise CX(_("fix --breed first before applying this setting"))
+            self.os_version = os_version
+        else:
+            self.os_version = ""
+        return True
 
     def set_arch(self,arch):
         """
@@ -208,11 +223,20 @@ class Repo(item.Item):
             raise CX("Error with repo %s - mirror is required" % (self.name))
 
 class YumRepo ( Repo ) :
-    pass
+    breed = "yum"
+    def set_breed(self,breed):
+      if breed != self.breed:
+        raise CX(_("Setting breed on %s to an invalid value (%s)") % (self,breed))
 
 class RhnRepo ( Repo ) :
-    pass
+    breed = "rhn"
+    def set_breed(self,breed):
+      if breed != self.breed:
+        raise CX(_("Setting breed on %s to an invalid value (%s)") % (self,breed))
 
 class AptRepo ( Repo ) :
-    pass
+    breed = "apt"
+    def set_breed(self,breed):
+      if breed != self.breed:
+        raise CX(_("Setting breed on %s to an invalid value (%s)") % (self,breed))
 
