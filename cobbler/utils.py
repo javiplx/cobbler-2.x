@@ -878,16 +878,6 @@ def rsync_files(src, dst, args, logger=None, quiet=True):
 
     return True
 
-def run_this(cmd, args, logger):
-    """
-    A simple wrapper around subprocess calls.
-    """
-
-    my_cmd = cmd % args
-    rc = subprocess_call(logger,my_cmd,shell=True)
-    if rc != 0:
-        die(logger,"Command failed")
-
 def run_triggers(api,ref,globber,additional=[],logger=None):
     """
     Runs all the trigger scripts in a given directory.
