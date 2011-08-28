@@ -49,11 +49,13 @@ def register():
    return "manage/import"
 
 
+from manage_import_base import ImportBaseManager
+
 class ImportRedhatManager ( ImportBaseManager ) :
 
     __breed_str__ = "redhat"
 
-    self.signatures = (
+    signatures = (
        'RedHat/RPMS',
        'RedHat/rpms',
        'RedHat/Base',

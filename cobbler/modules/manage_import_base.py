@@ -55,7 +55,7 @@ class ImportBaseManager:
 
     __breed_str__ = None
 
-    self.signatures = ()
+    signatures = ()
 
     def __init__(self,config,logger):
         """
@@ -380,6 +380,7 @@ class ImportBaseManager:
                     pae_kernel = os.path.join(dirname, x)
 
             # if we've collected a matching kernel and initrd pair, turn the in and add them to the list
+            # FIXME : verify than the isolinux check does not interfere with FreeBSD media
             if initrd is not None and kernel is not None and dirname.find("isolinux") == -1:
                 adtls.append(self.add_entry(dirname,kernel,initrd))
                 kernel = None
@@ -478,10 +479,11 @@ class ImportBaseManager:
             # depending on the name of the profile we can define a good virt-type
             # for usage with koan
 
-            if name.find("-xen") != -1:
-                profile.set_virt_type("xenpv")
-            elif name.find("vmware") != -1:
+            # NOTE : the freebsd importer did force the virtualization type
+            if name.find("vmware") != -1 or self.breed in ( "vmware" , "freebsd" ) :
                 profile.set_virt_type("vmware")
+            elif name.find("-xen") != -1:
+                profile.set_virt_type("xenpv")
             else:
                 profile.set_virt_type("qemu")
 
@@ -508,6 +510,8 @@ class ImportBaseManager:
         else:
             # remove the part that says /var/www/cobbler/ks_mirror/name
             name = "-".join(dirname.split("/")[5:])
+
+        # FIXME : The name cleanup on FreeBSD is much simpler, check that no interference happens
 
         if kernel is not None and kernel.find("PAE") != -1:
             name = name + "-PAE"
