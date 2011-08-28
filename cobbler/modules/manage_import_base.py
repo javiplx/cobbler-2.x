@@ -144,7 +144,7 @@ class ImportBaseManager:
 
         if self.arch is not None and self.arch != "":
             self.arch = self.arch.lower()
-            if self.arch == "x86":
+            if self.arch in ( 'x86' , 'i486', 'i586', 'i686' ) :
                 # be consistent
                 self.arch = "i386"
             if self.arch not in self.get_valid_arches():
@@ -361,7 +361,7 @@ class ImportBaseManager:
             fullname = os.path.join(dirname,x)
             if os.path.islink(fullname) and os.path.isdir(fullname):
                 if fullname.startswith(self.path):
-                    # Prevent infinite loop with Sci Linux 5
+                    # Prevent infinite loop with debian, Sci Linux 5 and maybe others
                     self.logger.warning("avoiding symlink loop")
                     continue
                 self.logger.info("following symlink: %s" % fullname)
@@ -420,7 +420,7 @@ class ImportBaseManager:
             archs = [ proposed_arch ]
 
         if len(archs)>1:
-            if self.breed in [ "redhat" ]:
+            if self.breed in ( "redhat" , "suse" ) :
                 self.logger.warning("directory %s holds multiple arches : %s" % (dirname, archs))
                 return
             self.logger.warning("- Warning : Multiple archs found : %s" % (archs))
@@ -511,6 +511,8 @@ class ImportBaseManager:
 
         if kernel is not None and kernel.find("PAE") != -1:
             name = name + "-PAE"
+        if kernel is not None and kernel.find("xen") != -1:
+            name = name + "-xen"
 
         # These are all Ubuntu's doing, the netboot images are buried pretty
         # deep. ;-) -JC
@@ -518,6 +520,12 @@ class ImportBaseManager:
         name = name.replace("-ubuntu-installer","")
         name = name.replace("-amd64","")
         name = name.replace("-i386","")
+
+        # SuSE : we have our kernel in ../boot/<arch>/vmlinuz-xen and
+        # .../boot/<arch>/loader/vmlinuz
+        #
+        name = name.replace("-loader","")
+        name = name.replace("-boot","")
 
         # we know that some kernel paths should not be in the name
 
@@ -531,6 +539,7 @@ class ImportBaseManager:
 
         name = name.replace("-os","")
         name = name.replace("-tree","")
+        name = name.replace("srv-www-cobbler-", "")
         name = name.replace("var-www-cobbler-", "")
         name = name.replace("ks_mirror-","")
         name = name.replace("--","-")

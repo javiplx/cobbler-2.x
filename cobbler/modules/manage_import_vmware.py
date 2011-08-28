@@ -288,16 +288,8 @@ class ImportVMWareManager:
             return glob.glob(os.path.join(self.get_rootdir(), "vmkernel.gz"))
         return data2
 
-    def get_tree_location(self, distro):
-        """
-        Once a distribution is identified, find the part of the distribution
-        that has the URL in it that we want to use for kickstarting the
-        distribution, and create a ksmeta variable $tree that contains this.
-        """
-
-        base = self.get_rootdir()
-
-        if self.network_root is None:
+    def get_install_tree(self, distro, base):
+            # NOTE : this is the same than in RedHat importer
             dest_link = os.path.join(self.settings.webdir, "links", distro.name)
             # create the links directory only if we are mirroring because with
             # SELinux Apache can't symlink to NFS (without some doing)
@@ -308,7 +300,19 @@ class ImportVMWareManager:
                     # this shouldn't happen but I've seen it ... debug ...
                     self.logger.warning("symlink creation failed: %(base)s, %(dest)s") % { "base" : base, "dest" : dest_link }
             # how we set the tree depends on whether an explicit network_root was specified
-            tree = "http://@@http_server@@/cblr/links/%s" % (distro.name)
+            return "http://@@http_server@@/cblr/links/%s" % (distro.name)
+
+    def get_tree_location(self, distro):
+        """
+        Once a distribution is identified, find the part of the distribution
+        that has the URL in it that we want to use for kickstarting the
+        distribution, and create a ksmeta variable $tree that contains this.
+        """
+
+        base = self.get_rootdir()
+
+        if self.network_root is None:
+            tree = self.get_install_tree(distro,base)
             self.set_install_tree(distro, tree)
         else:
             # where we assign the kickstart source is relative to our current directory
@@ -452,6 +456,9 @@ class ImportVMWareManager:
 
         return distros_added
 
+    def get_name_from_path(self,dirname):
+        return self.mirror_name + "-".join(utils.path_tail(os.path.dirname(self.path),dirname).split("/"))
+
     def get_proposed_name(self,dirname,kernel=None):
         """
         Given a directory name where we have a kernel/initrd pair, try to autoname
@@ -459,7 +466,7 @@ class ImportVMWareManager:
         """
 
         if self.network_root is not None:
-            name = self.mirror_name + "-".join(utils.path_tail(os.path.dirname(self.path),dirname).split("/"))
+            name = self.get_name_from_path(dirname)
         else:
             # remove the part that says /var/www/cobbler/ks_mirror/name
             name = "-".join(dirname.split("/")[5:])
@@ -599,17 +606,7 @@ class ImportVMWareManager:
         base = self.get_rootdir()
 
         if self.network_root is None:
-            dest_link = os.path.join(self.settings.webdir, "links", distro.name)
-            # create the links directory only if we are mirroring because with
-            # SELinux Apache can't symlink to NFS (without some doing)
-            if not os.path.exists(dest_link):
-                try:
-                    os.symlink(base, dest_link)
-                except:
-                    # this shouldn't happen but I've seen it ... debug ...
-                    self.logger.warning("symlink creation failed: %(base)s, %(dest)s") % { "base" : base, "dest" : dest_link }
-            # how we set the tree depends on whether an explicit network_root was specified
-            tree = "http://@@http_server@@/cblr/links/%s" % (distro.name)
+            tree = self.get_install_tree(distro,base)
             self.set_install_tree( distro, tree)
         else:
             # where we assign the kickstart source is relative to our current directory

@@ -114,7 +114,7 @@ class ImportDebianUbuntuManager:
 
         # If no breed was specified on the command line, figure it out
         if self.breed == None:
-            self.breed = self.get_breed_from_directory()
+            self.set_breed_from_directory()
             if not self.breed:
                 utils.die(self.logger,"import failed - could not determine breed of debian-based distro")
                
@@ -284,15 +284,20 @@ class ImportDebianUbuntuManager:
         """
         return glob.glob(os.path.join(self.get_rootdir(), "dists/*"))
 
-    def get_breed_from_directory(self):
+    def set_breed_from_directory(self):
         for breed in self.get_valid_breeds():
             # NOTE : Although we break the loop after the first match,
             # multiple debian derived distros can actually live at the same pool -- JP
             d = os.path.join(self.mirror, breed)
             if (os.path.islink(d) and os.path.isdir(d) and os.path.realpath(d) == os.path.realpath(self.mirror)) or os.path.basename(self.mirror) == breed:
-                return breed
-        else:
-            return None
+                self.breed = breed
+
+    def get_install_tree(self, distro, base):
+            dists_path = os.path.join(self.path, "dists")
+            if os.path.isdir(dists_path):
+                return "http://@@http_server@@/cblr/ks_mirror/%s" % self.mirror_name
+            else:
+                return "http://@@http_server@@/cblr/repo_mirror/%s" % distro.name
 
     def get_tree_location(self, distro):
         """
@@ -304,11 +309,7 @@ class ImportDebianUbuntuManager:
         base = self.get_rootdir()
 
         if self.network_root is None:
-            dists_path = os.path.join(self.path, "dists")
-            if os.path.isdir(dists_path):
-                tree = "http://@@http_server@@/cblr/ks_mirror/%s" % (self.mirror_name)
-            else:
-                tree = "http://@@http_server@@/cblr/repo_mirror/%s" % (distro.name)
+            tree = self.get_install_tree(distro,base)
             self.set_install_tree(distro, tree)
         else:
             # where we assign the kickstart source is relative to our current directory
@@ -329,6 +330,7 @@ class ImportDebianUbuntuManager:
                 basepath = os.path.dirname(distro.kernel)
                 top = self.get_rootdir()
                 self.logger.info("descent into %s" % top)
+                # NOTE : here differs from standard repo_finder, as no walker is called
                 dists_path = os.path.join(self.path, "dists")
                 if not os.path.isdir(dists_path):
                     self.process_repos()
@@ -471,6 +473,9 @@ class ImportDebianUbuntuManager:
 
         return distros_added
 
+    def get_name_from_path(self,dirname):
+        return self.mirror_name + "-".join(utils.path_tail(os.path.dirname(self.path),dirname).split("/"))
+
     def get_proposed_name(self,dirname,kernel=None):
         """
         Given a directory name where we have a kernel/initrd pair, try to autoname
@@ -478,7 +483,7 @@ class ImportDebianUbuntuManager:
         """
 
         if self.network_root is not None:
-            name = self.mirror_name + "-".join(utils.path_tail(os.path.dirname(self.path),dirname).split("/"))
+            name = self.get_name_from_path(dirname)
         else:
             # remove the part that says /var/www/cobbler/ks_mirror/name
             name = "-".join(dirname.split("/")[5:])
@@ -610,11 +615,7 @@ class ImportDebianUbuntuManager:
         base = self.get_rootdir()
 
         if self.network_root is None:
-            dists_path = os.path.join( self.path , "dists" )
-            if os.path.isdir( dists_path ):
-                tree = "http://@@http_server@@/cblr/ks_mirror/%s" % (self.mirror_name)
-            else:
-                tree = "http://@@http_server@@/cblr/repo_mirror/%s" % (distro.name)
+            tree = self.get_install_tree(distro,base)
             self.set_install_tree(distro, tree)
         else:
             # where we assign the kickstart source is relative to our current directory

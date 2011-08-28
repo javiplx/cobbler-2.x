@@ -276,6 +276,20 @@ class ImportSuseManager:
 #                data2.append(x)
         return data2
 
+    def get_install_tree(self, distro, base):
+            dest_link = os.path.join(self.settings.webdir, "links", distro.name)
+            # create the links directory only if we are mirroring because with
+            # SELinux Apache can't symlink to NFS (without some doing)
+            if not os.path.exists(dest_link):
+                try:
+                    # NOTE : only difference respect to the get_install_tree on RedHat importer
+                    os.symlink(base + "-" + distro.arch, dest_link)
+                except:
+                    # this shouldn't happen but I've seen it ... debug ...
+                    self.logger.warning("symlink creation failed: %s, %s" % (base,dest_link) )
+            # how we set the tree depends on whether an explicit network_root was specified
+            return "http://@@http_server@@/cblr/links/%s" % distro.name
+
     def get_tree_location(self, distro):
         """
         Once a distribution is identified, find the part of the distribution
@@ -286,17 +300,7 @@ class ImportSuseManager:
         base = self.get_rootdir()
 
         if self.network_root is None:
-            dest_link = os.path.join(self.settings.webdir, "links", distro.name)
-            # create the links directory only if we are mirroring because with
-            # SELinux Apache can't symlink to NFS (without some doing)
-            if not os.path.exists(dest_link):
-                try:
-                    os.symlink(base + "-" + distro.arch, dest_link)
-                except:
-                    # this shouldn't happen but I've seen it ... debug ...
-                    self.logger.warning("symlink creation failed: %(base)s, %(dest)s") % { "base" : base, "dest" : dest_link }
-            # how we set the tree depends on whether an explicit network_root was specified
-            tree = "http://@@http_server@@/cblr/links/%s" % (distro.name)
+            tree = self.get_install_tree(distro,base)
             self.set_install_tree(distro, tree)
         else:
             # where we assign the kickstart source is relative to our current directory
@@ -345,10 +349,15 @@ class ImportSuseManager:
                         self.logger.info("looks like we've already scanned here: %s" % dirname)
                         continue
                     self.logger.info("need to process repo/comps: %s" % dirname)
+                    self.process_comps_file(dirname, distro)
                     matches[dirname] = 1
                 else:
                     self.logger.info("directory %s is missing xml comps file, skipping" % dirname)
                     continue
+
+    def process_comps_file(self, comps_path, distro):
+        # NOTE : this methods allows to use the same repo_scanner than RedHat importer
+        pass
 
     def distro_adder(self,distros_added,dirname,fnames):
         """
@@ -459,6 +468,7 @@ class ImportSuseManager:
             distro.set_initrd(initrd)
             distro.set_arch(pxe_arch)
             distro.set_breed(self.breed)
+            # NOTE : only difference with the distro_adder from base class
             distro.set_kernel_options("install=http://@@http_server@@/cblr/links/%s" % (name))
             # If a version was supplied on command line, we set it now
             if self.os_version:
@@ -503,27 +513,6 @@ class ImportSuseManager:
 
             # Create a rescue image as well, if this is not a xen distro
             # but only for red hat profiles
-
-            # this code disabled as it seems to be adding "-rescue" to
-            # distros that are /not/ rescue related, which is wrong.
-            # left as a FIXME for those who find this feature interesting.
-            #if name.find("-xen") == -1 and self.breed == "redhat":
-            #    rescue_name = 'rescue-' + name
-            #    existing_profile = self.profiles.find(name=rescue_name)
-            #
-            #    if existing_profile is None:
-            #        self.logger.info("creating new profile: %s" % rescue_name)
-            #        profile = self.config.new_profile()
-            #    else:
-            #        continue
-            #
-            #    profile.set_name(rescue_name)
-            #    profile.set_distro(name)
-            #    profile.set_virt_type("qemu")
-            #    profile.kernel_options['rescue'] = None
-            #    profile.kickstart = '/var/lib/cobbler/kickstarts/pxerescue.ks'
-            #
-            #    self.profiles.add(profile,save=True)
 
         return distros_added
 
@@ -654,17 +643,7 @@ class ImportSuseManager:
         base = self.get_rootdir()
 
         if self.network_root is None:
-            dest_link = os.path.join(self.settings.webdir, "links", distro.name)
-            # create the links directory only if we are mirroring because with
-            # SELinux Apache can't symlink to NFS (without some doing)
-            if not os.path.exists(dest_link):
-                try:
-                    os.symlink(base + "-" + distro.arch, dest_link)
-                except:
-                    # this shouldn't happen but I've seen it ... debug ...
-                    self.logger.warning("symlink creation failed: %(base)s, %(dest)s") % { "base" : base, "dest" : dest_link }
-            # how we set the tree depends on whether an explicit network_root was specified
-            tree = "http://@@http_server@@/cblr/links/%s" % (distro.name)
+            tree = self.get_install_tree(distro,base)
             self.set_install_tree( distro, tree)
         else:
             # where we assign the kickstart source is relative to our current directory
