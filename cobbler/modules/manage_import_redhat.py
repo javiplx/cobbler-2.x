@@ -49,7 +49,7 @@ def register():
    return "manage/import"
 
 
-from manage_import_base import ImportBaseManager
+from cobbler.manage_import_base import ImportBaseManager
 
 class ImportRedhatManager ( ImportBaseManager ) :
 
