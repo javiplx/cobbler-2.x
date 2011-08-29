@@ -49,7 +49,6 @@ FIELDS = [
   ["owners","SETTINGS:default_ownership",0,"Owners",True,"Owners list for authz_ownership (space delimited)",[],"list"],
   ["parent",None,0,"",False,"",0,"str"],
   ["rpm_list",[],0,"RPM List",True,"Mirror just these RPMs (yum only)",0,"list"],
-#  ["os_version","",0,"OS Version",True,"ex: rhel4"],
   ["uid",None,0,"",False,"",0,"str"],
   ["createrepo_flags",'<<inherit>>',0,"Createrepo Flags",True,"Flags to use with createrepo",0,"dict"],
   ["environment",{},0,"Environment Variables",True,"Use these environment variables during commands (key=value, space delimited)",0,"dict"],
@@ -190,18 +189,6 @@ class Repo(item.Item):
     def set_breed(self,breed):
       if breed != self.breed:
         raise CX(_("Setting breed on %s to an invalid value (%s)") % (self,breed))
-
-    def set_os_version(self,os_version):
-        if os_version:
-            self.os_version = os_version.lower()
-            if not self.breed :
-               raise CX(_("cannot set --os-version without setting --breed first"))
-            if not self.breed in VALID_REPO_BREEDS:
-               raise CX(_("fix --breed first before applying this setting"))
-            self.os_version = os_version
-        else:
-            self.os_version = ""
-        return True
 
     def set_arch(self,arch):
         """
@@ -573,7 +560,11 @@ class AptRepo ( Repo ) :
         dest_path = os.path.join("/var/www/cobbler/repo_mirror", self.name)
          
         if self.mirror_locally:
-            mirror = repo.mirror.replace("@@suite@@",repo.os_version)
+            idx = self.mirror.rfind("/dists/")
+            if idx == -1 :
+                utils.die(logger,"Cannot extract suite name from url %s" % self.mirror)
+            mirror = self.mirror[:idx+1]
+            suite = self.mirror[idx+7:].strip('/')
 
             idx = mirror.find("://")
             method = mirror[:idx]
@@ -581,11 +572,7 @@ class AptRepo ( Repo ) :
 
             idx = mirror.find("/")
             host = mirror[:idx]
-            mirror = mirror[idx+1:]
-
-            idx = mirror.rfind("/dists/")
-            suite = mirror[idx+7:]
-            mirror = mirror[:idx]
+            mirror = mirror[idx:]
 
             mirror_data = "--method=%s --host=%s --root=%s --dist=%s " % ( method , host , mirror , suite )
 
