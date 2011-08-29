@@ -333,8 +333,8 @@ class RsyncRepo ( Repo ) :
         if not self.mirror_locally:
             utils.die(logger,"rsync:// urls must be mirrored locally, yum cannot access them directly")
 
-        if self.rpm_list != "" and self.rpm_list != []:
-            logger.warning("--rpm-list is not supported for rsync'd repositories")
+        if self.rpm_list:
+            logger.warning("warning: rpm-list is not supported for rsync'd repositories")
 
         # FIXME: don't hardcode
         dest_path = os.path.join(self.settings.webdir+"/repo_mirror", self.name)
@@ -358,14 +358,6 @@ class YumRepo ( Repo ) :
         if not os.path.exists("/usr/bin/reposync"):
             utils.die(logger,"no /usr/bin/reposync found, please install yum-utils")
 
-        cmd = ""                  # command to run
-        has_rpm_list = False      # flag indicating not to pull the whole repo
-
-        # detect cases that require special handling
-
-        if self.rpm_list != "" and self.rpm_list != []:
-            has_rpm_list = True
-
         # create yum config file for use by reposync
         dest_path = os.path.join(self.settings.webdir+"/repo_mirror", self.name)
         temp_path = os.path.join(dest_path, ".origin")
@@ -379,7 +371,7 @@ class YumRepo ( Repo ) :
         if self.mirror_locally:
             temp_file = self.create_local_file(temp_path, False)
 
-        if not has_rpm_list and self.mirror_locally:
+        if not self.rpm_list and self.mirror_locally:
             # if we have not requested only certain RPMs, use reposync
             rflags = self.settings.reposync_flags
             cmd = "/usr/bin/reposync %s --config=%s --repoid=%s --download_path=%s" % (rflags, temp_file, self.name, self.settings.webdir+"/repo_mirror")
@@ -460,14 +452,6 @@ class RhnRepo ( Repo ) :
         if not os.path.exists("/usr/bin/reposync"):
             utils.die(logger,"no /usr/bin/reposync found, please install yum-utils")
 
-        cmd = ""                  # command to run
-        has_rpm_list = False      # flag indicating not to pull the whole repo
-
-        # detect cases that require special handling
-
-        if self.rpm_list != "" and self.rpm_list != []:
-            has_rpm_list = True
-
         # create yum config file for use by reposync
         # FIXME: don't hardcode
         dest_path = os.path.join(self.settings.webdir+"/repo_mirror", self.name)
@@ -485,8 +469,8 @@ class RhnRepo ( Repo ) :
         if not self.mirror_locally:
             utils.die("rhn:// repos do not work with --mirror-locally=1")
 
-        if has_rpm_list:
-            logger.warning("warning: --rpm-list is not supported for RHN content")
+        if self.rpm_list:
+            logger.warning("warning: rpm-list is not supported for RHN content")
         rest = self.mirror[6:] # everything after rhn://
         rflags = self.settings.reposync_flags
         cmd = "/usr/bin/reposync %s -r %s --download_path=%s" % (rflags, rest, self.settings.webdir+"/repo_mirror")
@@ -537,13 +521,8 @@ class AptRepo ( Repo ) :
         if not os.path.exists(mirror_program):
             utils.die(logger,"no %s found, please install it"%(mirror_program))
 
-        cmd = ""                  # command to run
-        has_rpm_list = False      # flag indicating not to pull the whole repo
-
-        # detect cases that require special handling
-
-        if self.rpm_list != "" and self.rpm_list != []:
-            utils.die(logger,"has_rpm_list not yet supported on apt repos")
+        if self.rpm_list:
+            logger.warning("warning: rpm-list is not supported on apt repos")
 
         if not self.arch:
             utils.die(logger,"Architecture is required for apt repositories")
