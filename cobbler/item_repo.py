@@ -90,14 +90,14 @@ class Repo(item.Item):
     def get_fields(self):
         return FIELDS
 
-    def _guess_breed(self):
-           # backwards compatibility
-           if self.mirror.startswith("http://") or self.mirror.startswith("ftp://"):
-              self.set_breed("yum")
-           elif self.mirror.startswith("rhn://"):
-              self.set_breed("rhn")
-           else:
-              self.set_breed("rsync")
+    def _guess_breed(self,mirror):
+        # backwards compatibility
+        if mirror.startswith("http://") or mirror.startswith("ftp://"):
+            return "yum"
+        elif mirror.startswith("rhn://"):
+            return "rhn"
+        else:
+            return "rsync"
 
     def set_mirror(self,mirror):
         """
