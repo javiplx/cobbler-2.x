@@ -214,18 +214,10 @@ class RepoSync:
         # FIXME: don't hardcode
         dest_path = os.path.join(self.settings.webdir+"/repo_mirror", repo.name)
 
-        spacer = ""
-        if not repo.mirror.startswith("rsync://") and not repo.mirror.startswith("/"):
-            spacer = "-e ssh"
-        if not repo.mirror.endswith("/"):
-            repo.mirror = "%s/" % repo.mirror
-
-        # FIXME: wrapper for subprocess that logs to logger
-        cmd = "rsync -rltDv %s --delete --exclude-from=/etc/cobbler/rsync.exclude %s %s" % (spacer, repo.mirror, dest_path)
-        rc = utils.subprocess_call(self.logger, cmd)
-
-        if rc !=0:
+        # FIXME : check any interference due introduced by utils function, which preserve permission & owner
+        if not utils.rsync_files( repo.mirror , dest_path ,  "--verbose --delete" , self.logger ) :
             utils.die(self.logger,"cobbler reposync failed")
+
         os.path.walk(dest_path, self.createrepo_walker, repo)
         self.create_local_file(dest_path, repo)
 

@@ -204,7 +204,7 @@ class ImportDebianUbuntuManager:
 
                 # kick off the rsync now
 
-                if not utils.rsync_files(self.mirror, self.path, self.rsync_flags, self.logger):
+                if not utils.rsync_files(self.mirror, self.path, self.rsync_flags, self.logger, False):
                     utils.die(self.logger, "failed to rsync the files")
 
         else:
