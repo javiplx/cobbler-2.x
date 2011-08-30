@@ -22,7 +22,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 02110-1301  USA
 """
 
-import item_repo as repo
+import item_repo
 import utils
 import collection
 from cexceptions import *
@@ -42,7 +42,7 @@ class Repos(collection.Collection):
         """
         Return a Distro forged from seed_data
         """
-        return repo.Repo(config).from_datastruct(seed_data)
+        return item_repo.Repo.Factory(config,seed_data)
 
     def remove(self,name,with_delete=True,with_sync=True,with_triggers=True,recursive=False,logger=None):
         """
