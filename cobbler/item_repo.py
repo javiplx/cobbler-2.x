@@ -56,24 +56,24 @@ class Repo(item.Item):
     TYPE_NAME = _("repo")
     COLLECTION_TYPE = "repo"
 
+    def Factory(config,seed_data):
+        if seed_data.has_key('breed'):
+            obj = Repo(config)
+        else:
+            obj = VoidRepo(config)
+        obj.from_datastruct(seed_data)
+        return obj
+    Factory = staticmethod(Factory)
+
     def make_clone(self):
         ds = self.to_datastruct()
-        cloned = Repo(self.config)
-        cloned.from_datastruct(ds)
+        cloned = self.Factory(self.config,ds)
+        if isinstance(cloned, VoidRepo):
+            raise CX(_("Wrong Repo cloning. Product is a VoidRepo object"))
         return cloned
 
     def get_fields(self):
         return FIELDS
-
-    def _guess_breed(self):
-        # backwards compatibility
-        if (self.breed == "" or self.breed is None):
-           if self.mirror.startswith("http://") or self.mirror.startswith("ftp://"):
-              self.set_breed("yum")
-           elif self.mirror.startswith("rhn://"):
-              self.set_breed("rhn")
-           else:
-              self.set_breed("rsync")
 
     def set_mirror(self,mirror):
         """
@@ -90,7 +90,6 @@ class Repo(item.Item):
               self.set_arch("ia64")
            elif mirror.find("s390") != -1:
               self.set_arch("s390x")
-        self._guess_breed()
         return True
 
     def set_keep_updated(self,keep_updated):
@@ -194,5 +193,15 @@ class Repo(item.Item):
             raise CX("name is required")
         if self.mirror is None:
             raise CX("Error with repo %s - mirror is required" % (self.name))
+
+class VoidRepo ( Repo ) :
+
+    def guess_breed(self,mirror):
+        if mirror.startswith("http://") or mirror.startswith("ftp://"):
+             return "yum"
+         elif mirror.startswith("rhn://"):
+             return "rhn"
+         else:
+             return "rsync"
 
 
