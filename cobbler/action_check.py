@@ -269,7 +269,7 @@ class BootCheck:
    def check_for_unsynced_repos(self,status):
        need_sync = []
        for r in self.config.repos():
-           if r.mirror_locally == 1:
+           if r.mirror_locally:
                lookfor = os.path.join(self.settings.webdir, "repo_mirror", r.name)
                if not os.path.exists(lookfor):
                    need_sync.append(r.name)
