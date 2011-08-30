@@ -45,9 +45,6 @@ import item_system
 
 from utils import _
 
-# FIXME: add --quiet depending on if not --verbose?
-RSYNC_CMD =  "rsync -a %s '%s' %s --exclude-from=/etc/cobbler/rsync.exclude --progress"
-
 def register():
    """
    The mandatory cobbler module registration hook.
@@ -192,12 +189,6 @@ class ImportFreeBSDManager:
 
             utils.mkdir(self.path)
 
-            # prevent rsync from creating the directory name twice
-            # if we are copying via rsync
-
-            if not self.mirror.endswith("/"):
-                self.mirror = "%s/" % self.mirror
-
             if self.mirror.startswith("http://") or self.mirror.startswith("ftp://") or self.mirror.startswith("nfs://"):
 
                 # http mirrors are kind of primative.  rsync is better.
@@ -212,16 +203,10 @@ class ImportFreeBSDManager:
                 # we don't use SSH for public mirrors and local files.
                 # presence of user@host syntax means use SSH
 
-                spacer = ""
-                if not self.mirror.startswith("rsync://") and not self.mirror.startswith("/"):
-                    spacer = ' -e "ssh" '
-                rsync_cmd = RSYNC_CMD
-                if self.rsync_flags:
-                    rsync_cmd = rsync_cmd + " " + self.rsync_flags
-
                 # kick off the rsync now
 
-                utils.run_this(rsync_cmd, (spacer, self.mirror, self.path), self.logger)
+                if not utils.rsync_files(self.mirror, self.path, self.rsync_flags, self.logger, False):
+                    utils.die(self.logger, "failed to rsync the files")
 
         else:
 
