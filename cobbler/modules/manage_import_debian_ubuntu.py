@@ -302,14 +302,9 @@ class ImportDebianUbuntuManager:
                 basepath = os.path.dirname(distro.kernel)
                 top = self.get_rootdir()
                 self.logger.info("descent into %s" % top)
-                dists_path = os.path.join(self.path, "dists")
-                if not os.path.isdir(dists_path):
-                    self.process_repos()
+                os.path.walk(top, self.repo_scanner, distro)
             else:
                 self.logger.info("this distro isn't mirrored")
-
-    def process_repos(self):
-        pass
 
     def distro_adder(self,distros_added,dirname,fnames):
         """
@@ -712,33 +707,39 @@ class ImportDebianUbuntuManager:
         #    return None
         pass
 
-    def process_repos(self, main_importer, distro):
-        # Create a disabled repository for the new distro, and the security updates
-        #
-        # NOTE : We cannot use ks_meta nor os_version because they get fixed at a later stage
+    def repo_scanner(self,distro,dirname,fnames):
+      """Called as os.path.walk handler, but directories removed to disable recursion.
+If no 'dists' is found at toplevel, a netboot import is assumed and
+standard & security repositories are added."""
 
-        repodata = { 'breed':"apt" , 'arch':distro.arch , 'keep_updated':False }
+      if "dists" not in fnames :
 
-        repo = item_repo.Repo.Factory(main_importer.config,repodata)
-        repo.yumopts["--ignore-release-gpg"] = None
-        repo.yumopts["--verbose"] = None
+        repodata = { 'breed':"apt" , 'arch':distro.arch , 'keep_updated':False , 'mirror_locally':False }
+
+        repo = item_repo.Repo.Factory(self.config,repodata)
+        repo.yumopts["--ignore-release-gpg"] = ""
+        repo.yumopts["--verbose"] = ""
         repo.set_name( distro.name )
         repo.set_os_version( distro.os_version )
         # NOTE : The location of the mirror should come from timezone
         repo.set_mirror( "http://ftp.%s.debian.org/debian/dists/%s" % ( 'us' , '@@suite@@' ) )
 
-        security_repo = item_repo.Repo.Factory(main_importer.config,repodata)
-        security_repo.yumopts["--ignore-release-gpg"] = None
-        security_repo.yumopts["--verbose"] = None
+        security_repo = item_repo.Repo.Factory(self.config,repodata)
+        security_repo.yumopts["--ignore-release-gpg"] = ""
+        security_repo.yumopts["--verbose"] = ""
         security_repo.set_name( distro.name + "-security" )
         security_repo.set_os_version( distro.os_version )
         # There are no official mirrors for security updates
         security_repo.set_mirror( "http://security.debian.org/debian-security/dists/%s/updates" % '@@suite@@' )
 
         self.logger.info("Added repos for %s" % distro.name)
-        repos  = main_importer.config.repos()
+        repos  = self.config.repos()
         repos.add(repo,save=True)
         repos.add(security_repo,save=True)
+
+      for x in list(fnames):
+          if os.path.isdir( os.path.join(dirname,x) ):
+              fnames.remove( x )
 
 # ==========================================================================
 
