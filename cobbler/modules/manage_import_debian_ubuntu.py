@@ -294,33 +294,6 @@ class ImportDebianUbuntuManager:
         else:
             return None
 
-    def get_tree_location(self, distro):
-        """
-        Once a distribution is identified, find the part of the distribution
-        that has the URL in it that we want to use for kickstarting the
-        distribution, and create a ksmeta variable $tree that contains this.
-        """
-
-        base = self.get_rootdir()
-
-        if self.network_root is None:
-            dists_path = os.path.join(self.path, "dists")
-            if os.path.isdir(dists_path):
-                tree = "http://@@http_server@@/cblr/ks_mirror/%s" % (self.mirror_name)
-            else:
-                tree = "http://@@http_server@@/cblr/repo_mirror/%s" % (distro.name)
-            self.set_install_tree(distro, tree)
-        else:
-            # where we assign the kickstart source is relative to our current directory
-            # and the input start directory in the crawl.  We find the path segments
-            # between and tack them on the network source path to find the explicit
-            # network path to the distro that Anaconda can digest.
-            tail = utils.path_tail(self.path, base)
-            tree = self.network_root[:-1] + tail
-            self.set_install_tree(distro, tree)
-
-        return
-
     def repo_finder(self, distros_added):
         for distro in distros_added:
             self.logger.info("traversing distro %s" % distro.name)
