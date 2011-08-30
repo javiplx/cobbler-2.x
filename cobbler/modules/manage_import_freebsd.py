@@ -70,21 +70,23 @@ class ImportFreeBSDManager:
 
     # required function for import modules
     def what(self):
-        return "import/freebsd"
+        return "import/%s" % self.__breed__
 
-    # required function for import modules
-    def check_for_signature(self,path,cli_breed):
-       signatures = [
+    __breed__ = "freebsd"
+
+    signatures = [
           'etc/freebsd-update.conf',
           'boot/frames.4th',
           '8.2-RELEASE',
        ]
 
+    # required function for import modules
+    def check_for_signature(self,path,cli_breed):
        #self.logger.info("scanning %s for a redhat-based distro signature" % path)
-       for signature in signatures:
+       for signature in self.signatures:
            d = os.path.join(path,signature)
            if os.path.exists(d):
-               self.logger.info("Found a freebsd compatible signature: %s" % signature)
+               self.logger.info("Found a %s compatible signature: %s" % (self.__breed__,signature))
                return (True,signature)
 
        if cli_breed and cli_breed in self.get_valid_breeds():
@@ -116,7 +118,7 @@ class ImportFreeBSDManager:
 
         # If no breed was specified on the command line, set it to "freebsd" for this module
         if self.breed == None:
-            self.breed = "freebsd"
+            self.set_breed_from_self()
 
         # debug log stuff for testing
         #self.logger.info("self.pkgdir = %s" % str(self.pkgdir))
@@ -140,7 +142,7 @@ class ImportFreeBSDManager:
 
         if self.arch is not None and self.arch != "":
             self.arch = self.arch.lower()
-            if self.arch == "x86":
+            if self.arch in ( 'x86' , 'i486', 'i586', 'i686' ):
                 # be consistent
                 self.arch = "i386"
             if self.arch not in self.get_valid_arches():
@@ -284,6 +286,9 @@ class ImportFreeBSDManager:
                     data2.append(x)
         return data2
 
+    def set_breed_from_self(self):
+        self.breed = self.__breed__
+
     def repo_finder(self, distros_added):
         """
         This routine looks through all distributions and tries to find
@@ -405,6 +410,16 @@ class ImportFreeBSDManager:
             self.logger.error("error launching createrepo (not installed?), ignoring")
             utils.log_exc(self.logger)
 
+    def is_initrd(self,filename):
+        if filename == "mfsroot.gz":
+            return True
+        return False
+
+    def is_kernel(self,filename):
+        if filename in ( "pxeboot" , "pxeboot.bs" ):
+            return True
+        return False
+
     def distro_adder(self,distros_added,dirname,fnames):
         """
         This is an os.path.walk routine that finds distributions in the directory
@@ -425,9 +440,9 @@ class ImportFreeBSDManager:
                 self.logger.info("following symlink: %s" % fullname)
                 os.path.walk(fullname, self.distro_adder, distros_added)
 
-            if x == "mfsroot.gz":
+            if self.is_initrd(x):
                 initrd = os.path.join(dirname,x)
-            if x == "pxeboot" or x == "pxeboot.bs":
+            if self.is_kernel(x):
                 kernel = os.path.join(dirname,x)
 
             # if we've collected a matching kernel and initrd pair, turn the in and add them to the list
@@ -468,6 +483,9 @@ class ImportFreeBSDManager:
             archs = [ proposed_arch ]
 
         if len(archs)>1:
+            if self.breed in ( "redhat" , "suse" ):
+                self.logger.warning("directory %s holds multiple arches : %s" % (dirname, archs))
+                return
             self.logger.warning("- Warning : Multiple archs found : %s" % (archs))
 
         distros_added = []
@@ -515,13 +533,22 @@ class ImportFreeBSDManager:
             profile.set_name(name)
             profile.set_distro(name)
             profile.set_kickstart(self.kickstart_file)
-            profile.set_virt_type("vmware")
+
+            if name.find("vmware") != -1 or self.breed in ( "vmware" , "freebsd" ):
+                profile.set_virt_type("vmware")
+            elif name.find("-xen") != -1:
+                profile.set_virt_type("xenpv")
+            else:
+                profile.set_virt_type("qemu")
 
             # save our new profile to the collection
 
             self.profiles.add(profile,save=True)
 
         return distros_added
+
+    def get_name_from_dirname(self,dirname):
+        return self.mirror_name + "-".join(utils.path_tail(os.path.dirname(self.path),dirname).split("/"))
 
     def get_proposed_name(self,dirname,kernel=None):
         """
@@ -530,7 +557,7 @@ class ImportFreeBSDManager:
         """
 
         if self.network_root is not None:
-            name = self.mirror_name + "-".join(utils.path_tail(os.path.dirname(self.path),dirname).split("/"))
+            name = self.get_name_from_dirname(dirname)
         else:
             # remove the part that says /var/www/cobbler/ks_mirror/name
             name = "-".join(dirname.split("/")[5:])
@@ -630,6 +657,20 @@ class ImportFreeBSDManager:
             self.distros.add(distro,save=True) # re-save
             self.api.serialize()
 
+    def get_local_tree(self, distro):
+        base = self.get_rootdir()
+        dest_link = os.path.join(self.settings.webdir, "links", distro.name)
+        # create the links directory only if we are mirroring because with
+        # SELinux Apache can't symlink to NFS (without some doing)
+        if not os.path.exists(dest_link):
+            try:
+                os.symlink(base, dest_link)
+            except:
+                # this shouldn't happen but I've seen it ... debug ...
+                self.logger.warning("symlink creation failed: %s, %s" % (base,dest_link))
+        # how we set the tree depends on whether an explicit network_root was specified
+        return "http://@@http_server@@/cblr/links/%s" % (distro.name)
+
     def configure_tree_location(self, distro):
         """
         Once a distribution is identified, find the part of the distribution
@@ -640,17 +681,7 @@ class ImportFreeBSDManager:
         base = self.get_rootdir()
 
         if self.network_root is None:
-            dest_link = os.path.join(self.settings.webdir, "links", distro.name)
-            # create the links directory only if we are mirroring because with
-            # SELinux Apache can't symlink to NFS (without some doing)
-            if not os.path.exists(dest_link):
-                try:
-                    os.symlink(base, dest_link)
-                except:
-                    # this shouldn't happen but I've seen it ... debug ...
-                    self.logger.warning("symlink creation failed: %(base)s, %(dest)s") % { "base" : base, "dest" : dest_link }
-            # how we set the tree depends on whether an explicit network_root was specified
-            tree = "http://@@http_server@@/cblr/links/%s" % (distro.name)
+            tree = self.get_local_tree(distro)
             self.set_install_tree( distro, tree)
         else:
             # where we assign the kickstart source is relative to our current directory
@@ -701,11 +732,11 @@ class ImportFreeBSDManager:
                 return True
         return False
 
-    def scan_pkg_filename(self, filename):
+    def scan_pkg_filename(self, file):
         """
         Determine what the distro is based on the release package filename.
         """
-        release_file = os.path.basename(filename)
+        release_file = os.path.basename(file)
 
         if release_file.lower().find("release") != -1:
             flavor = "freebsd"

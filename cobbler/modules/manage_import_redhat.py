@@ -69,11 +69,11 @@ class ImportRedhatManager:
 
     # required function for import modules
     def what(self):
-        return "import/redhat"
+        return "import/%s" % self.__breed__
 
-    # required function for import modules
-    def check_for_signature(self,path,cli_breed):
-       signatures = [
+    __breed__ = "redhat"
+
+    signatures = [
           'RedHat/RPMS',
           'RedHat/rpms',
           'RedHat/Base',
@@ -89,11 +89,13 @@ class ImportRedhatManager:
           'SL',
        ]
 
-       self.logger.info("scanning %s for a redhat-based distro signature" % path)
-       for signature in signatures:
+    # required function for import modules
+    def check_for_signature(self,path,cli_breed):
+       self.logger.info("scanning %s for a %s-based distro signature" % (path,self.__breed__))
+       for signature in self.signatures:
            d = os.path.join(path,signature)
            if os.path.exists(d):
-               self.logger.info("Found a redhat compatible signature: %s" % signature)
+               self.logger.info("Found a %s compatible signature: %s" % (self.__breed__,signature))
                return (True,signature)
 
        if cli_breed and cli_breed in self.get_valid_breeds():
@@ -125,7 +127,7 @@ class ImportRedhatManager:
 
         # If no breed was specified on the command line, set it to "redhat" for this module
         if self.breed == None:
-            self.breed = "redhat"
+            self.set_breed_from_self()
 
         # debug log stuff for testing
         #self.logger.info("self.pkgdir = %s" % str(self.pkgdir))
@@ -149,7 +151,7 @@ class ImportRedhatManager:
 
         if self.arch is not None and self.arch != "":
             self.arch = self.arch.lower()
-            if self.arch == "x86":
+            if self.arch in ( 'x86' , 'i486', 'i586', 'i686' ):
                 # be consistent
                 self.arch = "i386"
             if self.arch not in self.get_valid_arches():
@@ -297,6 +299,9 @@ class ImportRedhatManager:
                 data2.append(x)
         return data2
 
+    def set_breed_from_self(self):
+        self.breed = self.__breed__
+
     def repo_finder(self, distros_added):
         """
         This routine looks through all distributions and tries to find
@@ -418,6 +423,16 @@ class ImportRedhatManager:
             self.logger.error("error launching createrepo (not installed?), ignoring")
             utils.log_exc(self.logger)
 
+    def is_initrd(self,filename):
+        if ( filename.startswith("initrd") or filename.startswith("ramdisk.image.gz") ) and filename != "initrd.size":
+            return True
+        return False
+
+    def is_kernel(self,filename):
+        if ( filename.startswith("vmlinu") or filename.startswith("kernel.img") or filename.startswith("linux") ) and filename.find("initrd") == -1:
+            return True
+        return False
+
     def distro_adder(self,distros_added,dirname,fnames):
         """
         This is an os.path.walk routine that finds distributions in the directory
@@ -446,13 +461,13 @@ class ImportRedhatManager:
                 self.logger.info("following symlink: %s" % fullname)
                 os.path.walk(fullname, self.distro_adder, distros_added)
 
-            if ( x.startswith("initrd") or x.startswith("ramdisk.image.gz") ) and x != "initrd.size":
+            if self.is_initrd(x):
                 if x.find("PAE") == -1:
                     initrd = os.path.join(dirname,x)
                 else:
                     pae_initrd = os.path.join(dirname, x)
 
-            if ( x.startswith("vmlinu") or x.startswith("kernel.img") or x.startswith("linux") ) and x.find("initrd") == -1:
+            if self.is_kernel(x):
                 if x.find("PAE") == -1:
                     kernel = os.path.join(dirname,x)
                 else:
@@ -499,7 +514,7 @@ class ImportRedhatManager:
             archs = [ proposed_arch ]
 
         if len(archs)>1:
-            if self.breed in [ "redhat" ]:
+            if self.breed in ( "redhat" , "suse" ):
                 self.logger.warning("directory %s holds multiple arches : %s" % (dirname, archs))
                 return
             self.logger.warning("- Warning : Multiple archs found : %s" % (archs))
@@ -557,10 +572,10 @@ class ImportRedhatManager:
             # depending on the name of the profile we can define a good virt-type
             # for usage with koan
 
-            if name.find("-xen") != -1:
-                profile.set_virt_type("xenpv")
-            elif name.find("vmware") != -1:
+            if name.find("vmware") != -1 or self.breed in ( "vmware" , "freebsd" ):
                 profile.set_virt_type("vmware")
+            elif name.find("-xen") != -1:
+                profile.set_virt_type("xenpv")
             else:
                 profile.set_virt_type("qemu")
 
@@ -568,31 +583,10 @@ class ImportRedhatManager:
 
             self.profiles.add(profile,save=True)
 
-            # Create a rescue image as well, if this is not a xen distro
-            # but only for red hat profiles
-
-            # this code disabled as it seems to be adding "-rescue" to
-            # distros that are /not/ rescue related, which is wrong.
-            # left as a FIXME for those who find this feature interesting.
-            #if name.find("-xen") == -1 and self.breed == "redhat":
-            #    rescue_name = 'rescue-' + name
-            #    existing_profile = self.profiles.find(name=rescue_name)
-            #
-            #    if existing_profile is None:
-            #        self.logger.info("creating new profile: %s" % rescue_name)
-            #        profile = self.config.new_profile()
-            #    else:
-            #        continue
-            #
-            #    profile.set_name(rescue_name)
-            #    profile.set_distro(name)
-            #    profile.set_virt_type("qemu")
-            #    profile.kernel_options['rescue'] = None
-            #    profile.kickstart = '/var/lib/cobbler/kickstarts/pxerescue.ks'
-            #
-            #    self.profiles.add(profile,save=True)
-
         return distros_added
+
+    def get_name_from_dirname(self,dirname):
+        return self.mirror_name
 
     def get_proposed_name(self,dirname,kernel=None):
         """
@@ -601,7 +595,7 @@ class ImportRedhatManager:
         """
 
         if self.network_root is not None:
-            name = self.mirror_name #+ "-".join(utils.path_tail(os.path.dirname(self.path),dirname).split("/"))
+            name = self.get_name_from_dirname(dirname)
         else:
             # remove the part that says /var/www/cobbler/ks_mirror/name
             name = "-".join(dirname.split("/")[5:])
@@ -724,6 +718,20 @@ class ImportRedhatManager:
             self.distros.add(distro,save=True) # re-save
             self.api.serialize()
 
+    def get_local_tree(self, distro):
+        base = self.get_rootdir()
+        dest_link = os.path.join(self.settings.webdir, "links", distro.name)
+        # create the links directory only if we are mirroring because with
+        # SELinux Apache can't symlink to NFS (without some doing)
+        if not os.path.exists(dest_link):
+            try:
+                os.symlink(base, dest_link)
+            except:
+                # this shouldn't happen but I've seen it ... debug ...
+                self.logger.warning("symlink creation failed: %s, %s" % (base,dest_link))
+        # how we set the tree depends on whether an explicit network_root was specified
+        return "http://@@http_server@@/cblr/links/%s" % (distro.name)
+
     def configure_tree_location(self, distro):
         """
         Once a distribution is identified, find the part of the distribution
@@ -734,17 +742,7 @@ class ImportRedhatManager:
         base = self.get_rootdir()
 
         if self.network_root is None:
-            dest_link = os.path.join(self.settings.webdir, "links", distro.name)
-            # create the links directory only if we are mirroring because with
-            # SELinux Apache can't symlink to NFS (without some doing)
-            if not os.path.exists(dest_link):
-                try:
-                    os.symlink(base, dest_link)
-                except:
-                    # this shouldn't happen but I've seen it ... debug ...
-                    self.logger.warning("symlink creation failed: %(base)s, %(dest)s") % { "base" : base, "dest" : dest_link }
-            # how we set the tree depends on whether an explicit network_root was specified
-            tree = "http://@@http_server@@/cblr/links/%s" % (distro.name)
+            tree = self.get_local_tree(distro)
             self.set_install_tree( distro, tree)
         else:
             # where we assign the kickstart source is relative to our current directory
@@ -795,37 +793,37 @@ class ImportRedhatManager:
                 return True
         return False
 
-    def scan_pkg_filename(self, rpm):
+    def scan_pkg_filename(self, file):
         """
         Determine what the distro is based on the release package filename.
         """
 
-        rpm = os.path.basename(rpm)
+        file = os.path.basename(file)
 
         # if it looks like a RHEL RPM we'll cheat.
         # it may be slightly wrong, but it will be close enough
         # for RHEL5 we can get it exactly.
 
         for x in [ "4AS", "4ES", "4WS", "4common", "4Desktop" ]:
-            if rpm.find(x) != -1:
+            if file.find(x) != -1:
                 return ("redhat", 4, 0)
         for x in [ "3AS", "3ES", "3WS", "3Desktop" ]:
-            if rpm.find(x) != -1:
+            if file.find(x) != -1:
                 return ("redhat", 3, 0)
         for x in [ "2AS", "2ES", "2WS", "2Desktop" ]:
-            if rpm.find(x) != -1:
+            if file.find(x) != -1:
                 return ("redhat", 2, 0)
 
         # now get the flavor:
         flavor = "redhat"
-        if rpm.lower().find("fedora") != -1:
+        if file.lower().find("fedora") != -1:
             flavor = "fedora"
-        if rpm.lower().find("centos") != -1:
+        if file.lower().find("centos") != -1:
             flavor = "centos"
 
         # get all the tokens and try to guess a version
         accum = []
-        tokens = rpm.split(".")
+        tokens = file.split(".")
         for t in tokens:
             tokens2 = t.split("-")
             for t2 in tokens2:

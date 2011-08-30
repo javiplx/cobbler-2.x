@@ -70,17 +70,19 @@ class ImportVMWareManager:
 
     # required function for import modules
     def what(self):
-        return "import/vmware"
+        return "import/%s" % self.__breed__
 
-    # required function for import modules
-    def check_for_signature(self,path,cli_breed):
-       signatures = [
+    __breed__ = "vmware"
+
+    signatures = [
            'VMware/RPMS',
            'imagedd.bz2',
        ]
 
+    # required function for import modules
+    def check_for_signature(self,path,cli_breed):
        #self.logger.info("scanning %s for a vmware-based signature" % path)
-       for signature in signatures:
+       for signature in self.signatures:
            d = os.path.join(path,signature)
            if os.path.exists(d):
                self.logger.info("Found a vmware compatible signature: %s" % signature)
@@ -115,7 +117,7 @@ class ImportVMWareManager:
 
         # If no breed was specified on the command line, set it to "redhat" for this module
         if self.breed == None:
-            self.breed = "vmware"
+            self.set_breed_from_self()
 
         # debug log stuff for testing
         #self.logger.info("self.pkgdir = %s" % str(self.pkgdir))
@@ -139,7 +141,7 @@ class ImportVMWareManager:
 
         if self.arch is not None and self.arch != "":
             self.arch = self.arch.lower()
-            if self.arch == "x86":
+            if self.arch in ( 'x86' , 'i486', 'i586', 'i686' ):
                 # be consistent
                 self.arch = "i386"
             if self.arch not in self.get_valid_arches():
@@ -243,10 +245,10 @@ class ImportVMWareManager:
 
         # find out if we can auto-create any repository records from the install tree
 
-        #if self.network_root is None:
-        #    self.logger.info("associating repos")
-        #    # FIXME: this automagic is not possible (yet) without mirroring
-        #    self.repo_finder(distros_added)
+        if self.network_root is None:
+            self.logger.info("associating repos")
+            # FIXME: this automagic is not possible (yet) without mirroring
+            self.repo_finder(distros_added)
 
         # find the most appropriate answer files for each profile object
 
@@ -289,23 +291,10 @@ class ImportVMWareManager:
         return data2
 
     def repo_finder(self, distros_added):
-        """
-        This routine looks through all distributions and tries to find
-        any applicable repositories in those distributions for post-install
-        usage.
-        """
+        pass
 
-        for distro in distros_added:
-            self.logger.info("traversing distro %s" % distro.name)
-            # FIXME : Shouldn't decide this the value of self.network_root ?
-            if distro.kernel.find("ks_mirror") != -1:
-                basepath = os.path.dirname(distro.kernel)
-                top = self.get_rootdir()
-                self.logger.info("descent into %s" % top)
-                # FIXME : The location of repo definition is known from breed
-                os.path.walk(top, self.repo_scanner, distro)
-            else:
-                self.logger.info("this distro isn't mirrored")
+    def set_breed_from_self(self):
+        self.breed = self.__breed__
 
     def repo_scanner(self,distro,dirname,fnames):
         """
@@ -409,6 +398,16 @@ class ImportVMWareManager:
             self.logger.error("error launching createrepo (not installed?), ignoring")
             utils.log_exc(self.logger)
 
+    def is_initrd(self,filename):
+        if ( filename.startswith("initrd") or filename.startswith("ramdisk.image.gz") or filename.startswith("vmkboot.gz") ) and filename != "initrd.size":
+            return True
+        return False
+
+    def is_kernel(self,filename):
+        if ( filename.startswith("vmlinu") or filename.startswith("kernel.img") or filename.startswith("linux") or filename.startswith("mboot.c32") ) and filename.find("initrd") == -1:
+            return True
+        return False
+
     def distro_adder(self,distros_added,dirname,fnames):
         """
         This is an os.path.walk routine that finds distributions in the directory
@@ -432,9 +431,9 @@ class ImportVMWareManager:
                 self.logger.info("following symlink: %s" % fullname)
                 os.path.walk(fullname, self.distro_adder, distros_added)
 
-            if ( x.startswith("initrd") or x.startswith("ramdisk.image.gz") or x.startswith("vmkboot.gz") ) and x != "initrd.size":
+            if self.is_initrd(x):
                 initrd = os.path.join(dirname,x)
-            if ( x.startswith("vmlinu") or x.startswith("kernel.img") or x.startswith("linux") or x.startswith("mboot.c32") ) and x.find("initrd") == -1:
+            if self.is_kernel(x):
                 kernel = os.path.join(dirname,x)
 
             # if we've collected a matching kernel and initrd pair, turn the in and add them to the list
@@ -474,6 +473,9 @@ class ImportVMWareManager:
             archs = [ proposed_arch ]
 
         if len(archs)>1:
+            if self.breed in ( "redhat" , "suse" ):
+                self.logger.warning("directory %s holds multiple arches : %s" % (dirname, archs))
+                return
             self.logger.warning("- Warning : Multiple archs found : %s" % (archs))
 
         distros_added = []
@@ -529,13 +531,21 @@ class ImportVMWareManager:
             # We just set the virt type to vmware for these
             # since newer VMwares support running ESX as a guest for testing
 
-            profile.set_virt_type("vmware")
+            if name.find("vmware") != -1 or self.breed in ( "vmware" , "freebsd" ):
+                profile.set_virt_type("vmware")
+            elif name.find("-xen") != -1:
+                profile.set_virt_type("xenpv")
+            else:
+                profile.set_virt_type("qemu")
 
             # save our new profile to the collection
 
             self.profiles.add(profile,save=True)
 
         return distros_added
+
+    def get_name_from_dirname(self,dirname):
+        return self.mirror_name + "-".join(utils.path_tail(os.path.dirname(self.path),dirname).split("/"))
 
     def get_proposed_name(self,dirname,kernel=None):
         """
@@ -544,7 +554,7 @@ class ImportVMWareManager:
         """
 
         if self.network_root is not None:
-            name = self.mirror_name + "-".join(utils.path_tail(os.path.dirname(self.path),dirname).split("/"))
+            name = self.get_name_from_dirname(dirname)
         else:
             # remove the part that says /var/www/cobbler/ks_mirror/name
             name = "-".join(dirname.split("/")[5:])
@@ -651,7 +661,7 @@ class ImportVMWareManager:
                         self.logger.warning("No version found on imported tree")
                         continue
                     (flavor, major, minor, release, update) = results
-                    version , ks = self.set_variance(flavor, major, minor, release, update, distro.arch)
+                    version , ks = self.set_variance(flavor, major, minor, (release, update))
                     if self.os_version:
                         if self.os_version != version:
                             utils.die(self.logger,"CLI version differs from tree : %s vs. %s" % (self.os_version,version))
@@ -674,6 +684,20 @@ class ImportVMWareManager:
             self.distros.add(distro,save=True) # re-save
             self.api.serialize()
 
+    def get_local_tree(self, distro):
+        base = self.get_rootdir()
+        dest_link = os.path.join(self.settings.webdir, "links", distro.name)
+        # create the links directory only if we are mirroring because with
+        # SELinux Apache can't symlink to NFS (without some doing)
+        if not os.path.exists(dest_link):
+            try:
+                os.symlink(base, dest_link)
+            except:
+                # this shouldn't happen but I've seen it ... debug ...
+                self.logger.warning("symlink creation failed: %s, %s" % (base,dest_link))
+        # how we set the tree depends on whether an explicit network_root was specified
+        return "http://@@http_server@@/cblr/links/%s" % (distro.name)
+
     def configure_tree_location(self, distro):
         """
         Once a distribution is identified, find the part of the distribution
@@ -684,17 +708,7 @@ class ImportVMWareManager:
         base = self.get_rootdir()
 
         if self.network_root is None:
-            dest_link = os.path.join(self.settings.webdir, "links", distro.name)
-            # create the links directory only if we are mirroring because with
-            # SELinux Apache can't symlink to NFS (without some doing)
-            if not os.path.exists(dest_link):
-                try:
-                    os.symlink(base, dest_link)
-                except:
-                    # this shouldn't happen but I've seen it ... debug ...
-                    self.logger.warning("symlink creation failed: %(base)s, %(dest)s") % { "base" : base, "dest" : dest_link }
-            # how we set the tree depends on whether an explicit network_root was specified
-            tree = "http://@@http_server@@/cblr/links/%s" % (distro.name)
+            tree = self.get_local_tree(distro)
             self.set_install_tree( distro, tree)
         else:
             # where we assign the kickstart source is relative to our current directory
@@ -745,11 +759,11 @@ class ImportVMWareManager:
                 return True
         return False
 
-    def scan_pkg_filename(self, rpm):
+    def scan_pkg_filename(self, file):
         """
         Determine what the distro is based on the release package filename.
         """
-        rpm_file = os.path.basename(rpm)
+        rpm_file = os.path.basename(file)
 
         if rpm_file.lower().find("-esx-") != -1:
             flavor = "esx"
@@ -772,7 +786,7 @@ class ImportVMWareManager:
             # this should return something like:
             # VMware ESXi 4.1.0 [Releasebuild-260247], built on May 18 2010
             # though there will most likely be multiple results
-            scan_cmd = 'gunzip -c %s | strings | grep -i "^vmware esxi"' % rpm
+            scan_cmd = 'gunzip -c %s | strings | grep -i "^vmware esxi"' % file
             (data,rc) = utils.subprocess_sp(self.logger, scan_cmd)
             lines = data.split('\n')
             m = re.compile(r'ESXi (\d)+\.(\d)+\.(\d)+ \[Releasebuild-([\d]+)\]')
@@ -796,10 +810,11 @@ class ImportVMWareManager:
         """
         pass
 
-    def set_variance(self, flavor, major, minor, release, update, arch):
+    def set_variance(self, flavor, major, minor, arch):
         """
         Set distro specific versioning.
         """
+        release , update = arch
         os_version = "%s%s" % (flavor, major)
         if flavor == "esx4":
             ks = "/var/lib/cobbler/kickstarts/esx.ks"
