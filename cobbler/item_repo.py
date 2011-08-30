@@ -36,6 +36,7 @@ FIELDS = [
   ["ctime",0,0,"",False,"",0,"float"],
   ["depth",2,0,"",False,"",0,"float"],
   ["keep_updated",True,0,"Keep Updated",True,"Update this repo on next 'cobbler reposync'?",0,"bool"],
+  ["mirror_locally",True,0,"Mirror locally",True,"Copy files or just reference the repo externally?",0,"bool"],
   ["mirror",None,0,"Mirror",True,"Address of yum or rsync repo to mirror",0,"str"],
   ["mtime",0,0,"",False,"",0,"float"],
   ["name","",0,"Name",True,"Ex: f10-i386-updates",0,"str"],
@@ -44,9 +45,8 @@ FIELDS = [
   ["rpm_list",[],0,"RPM List",True,"Mirror just these RPMs (yum only)",0,"list"],
 #  ["os_version","",0,"OS Version",True,"ex: rhel4"],
   ["uid",None,0,"",False,"",0,"str"],
-  ["createrepo_flags",'<<inherit>>',0,"Createrepo Flags",True,"Flags to use with createrepo",0,"dict"],
   ["environment",{},0,"Environment Variables",True,"Use these environment variables during commands (key=value, space delimited)",0,"dict"],
-  ["mirror_locally",True,0,"Mirror locally",True,"Copy files or just reference the repo externally?",0,"bool"],
+  ["createrepo_flags",'<<inherit>>',0,"Createrepo Flags",True,"Flags to use with createrepo",0,"dict"],
   ["priority",99,0,"Priority",True,"Value for yum priorities plugin, if installed",0,"int"],
   ["yumopts",{},0,"Yum Options",True,"Options to write to yum config file",0,"dict"]
 ]
