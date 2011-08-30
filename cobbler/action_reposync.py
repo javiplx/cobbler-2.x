@@ -98,10 +98,13 @@ class RepoSync:
             if name is not None and repo.name != name:
                 # invoked to sync only a specific repo, this is not the one
                 continue
-            elif name is None and not repo.keep_updated:
+            elif not repo.keep_updated:
                 # invoked to run against all repos, but this one is off
                 self.logger.info("%s is set to not be updated" % repo.name)
                 continue
+
+            if not repo.mirror_locally:
+                utils.die(self.logger,"Cannot sync repo %s, not marked as local mirror" % repo.name)
 
             repo_mirror = os.path.join(self.settings.webdir, "repo_mirror")
             repo_path = os.path.join(repo_mirror, repo.name)
@@ -205,9 +208,6 @@ class RepoSync:
 
         repo_mirror = repo.mirror
 
-        if not repo.mirror_locally:
-            utils.die(self.logger,"rsync:// urls must be mirrored locally, yum cannot access them directly")
-
         if repo.rpm_list != "" and repo.rpm_list != []:
             self.logger.warning("--rpm-list is not supported for rsync'd repositories")
 
@@ -262,14 +262,6 @@ class RepoSync:
             # FIXME: there's a chance this might break the RHN D/L case
             os.makedirs(temp_path)
          
-        # how we invoke yum-utils depends on whether this is RHN content or not.
-
-       
-        # this is the somewhat more-complex RHN case.
-        # NOTE: this requires that you have entitlements for the server and you give the mirror as rhn://$channelname
-        if not repo.mirror_locally:
-            utils.die("rhn:// repos do not work with --mirror-locally=1")
-
         if has_rpm_list:
             self.logger.warning("warning: --rpm-list is not supported for RHN content")
         rest = repo.mirror[6:] # everything after rhn://
@@ -285,15 +277,8 @@ class RepoSync:
         if repo.arch != "":
             cmd = "%s -a %s" % (cmd, repo.arch)
 
-        # now regardless of whether we're doing yumdownloader or reposync
-        # or whether the repo was http://, ftp://, or rhn://, execute all queued
-        # commands here.  Any failure at any point stops the operation.
-
-        if repo.mirror_locally:
-            rc = utils.subprocess_call(self.logger, cmd)
-            # Don't die if reposync fails, it is logged
-            # if rc !=0:
-            #     utils.die(self.logger,"cobbler reposync failed")
+        # Don't die if reposync fails, it is logged
+        utils.subprocess_call(self.logger, cmd)
 
         # some more special case handling for RHN.
         # create the config file now, because the directory didn't exist earlier
@@ -302,8 +287,7 @@ class RepoSync:
 
         # now run createrepo to rebuild the index
 
-        if repo.mirror_locally:
-            os.path.walk(dest_path, self.createrepo_walker, repo)
+        os.path.walk(dest_path, self.createrepo_walker, repo)
 
         # create the config file the hosts will use to access the repository.
 
@@ -337,16 +321,15 @@ class RepoSync:
         dest_path = os.path.join(self.settings.webdir+"/repo_mirror", repo.name)
         temp_path = os.path.join(dest_path, ".origin")
 
-        if not os.path.isdir(temp_path) and repo.mirror_locally:
+        if not os.path.isdir(temp_path):
             # FIXME: there's a chance this might break the RHN D/L case
             os.makedirs(temp_path)
          
         # create the config file that yum will use for the copying
 
-        if repo.mirror_locally:
-            temp_file = self.create_local_file(temp_path, repo, output=False)
+        temp_file = self.create_local_file(temp_path, repo, output=False)
 
-        if not has_rpm_list and repo.mirror_locally:
+        if not has_rpm_list:
             # if we have not requested only certain RPMs, use reposync
             cmd = "/usr/bin/reposync %s --config=%s --repoid=%s --download_path=%s" % (self.rflags, temp_file, repo.name, self.settings.webdir+"/repo_mirror")
             if repo.arch != "":
@@ -358,7 +341,7 @@ class RepoSync:
                 else:
                    cmd = "%s -a %s" % (cmd, repo.arch)
 
-        elif repo.mirror_locally:
+        else:
 
             # create the output directory if it doesn't exist
             if not os.path.exists(dest_path):
@@ -377,10 +360,9 @@ class RepoSync:
         # or whether the repo was http://, ftp://, or rhn://, execute all queued
         # commands here.  Any failure at any point stops the operation.
 
-        if repo.mirror_locally:
-            rc = utils.subprocess_call(self.logger, cmd)
-            if rc !=0:
-                utils.die(self.logger,"cobbler reposync failed")
+        rc = utils.subprocess_call(self.logger, cmd)
+        if rc !=0:
+            utils.die(self.logger,"cobbler reposync failed")
 
         repodata_path = os.path.join(dest_path, "repodata")
 
@@ -406,12 +388,9 @@ class RepoSync:
                         utils.die(self.logger,"wget failed")
 
         # now run createrepo to rebuild the index
-
-        if repo.mirror_locally:
-            os.path.walk(dest_path, self.createrepo_walker, repo)
+        os.path.walk(dest_path, self.createrepo_walker, repo)
 
         # create the config file the hosts will use to access the repository.
-
         self.create_local_file(dest_path, repo)
 
     # ====================================================================================
@@ -445,45 +424,44 @@ class RepoSync:
         # built destination path for the repo
         dest_path = os.path.join("/var/www/cobbler/repo_mirror", repo.name)
          
-        if repo.mirror_locally:
-            mirror = repo.mirror.replace("@@suite@@",repo.os_version)
+        mirror = repo.mirror.replace("@@suite@@",repo.os_version)
 
-            idx = mirror.find("://")
-            method = mirror[:idx]
-            mirror = mirror[idx+3:]
+        idx = mirror.find("://")
+        method = mirror[:idx]
+        mirror = mirror[idx+3:]
 
-            idx = mirror.find("/")
-            host = mirror[:idx]
-            mirror = mirror[idx+1:]
+        idx = mirror.find("/")
+        host = mirror[:idx]
+        mirror = mirror[idx+1:]
 
-            idx = mirror.rfind("/dists/")
-            suite = mirror[idx+7:]
-            mirror = mirror[:idx]
+        idx = mirror.rfind("/dists/")
+        suite = mirror[idx+7:]
+        mirror = mirror[:idx]
 
-            mirror_data = "--method=%s --host=%s --root=%s --dist=%s " % ( method , host , mirror , suite )
+        mirror_data = "--method=%s --host=%s --root=%s --dist=%s " % ( method , host , mirror , suite )
 
-            # FIXME : flags should come from repo instead of being hardcoded
+        # FIXME : flags should come from repo instead of being hardcoded
 
-            rflags = "--passive --nocleanup"
-            for x in repo.yumopts:
-                if repo.yumopts[x]:
-                    rflags += " %s %s" % ( x , repo.yumopts[x] ) 
-                else:
-                    rflags += " %s" % x 
-            cmd = "%s %s %s %s" % (mirror_program, rflags, mirror_data, dest_path)
-            if repo.arch == "src":
-                cmd = "%s --source" % cmd
+        rflags = "--passive --nocleanup"
+        for x in repo.yumopts:
+            if repo.yumopts[x]:
+                rflags += " %s %s" % ( x , repo.yumopts[x] ) 
             else:
-                arch = repo.arch
-                if arch == "x86":
-                   arch = "i386" # FIX potential arch errors
-                if arch == "x86_64":
-                   arch = "amd64" # FIX potential arch errors
-                cmd = "%s --nosource -a %s" % (cmd, arch)
+                rflags += " %s" % x 
+        cmd = "%s %s %s %s" % (mirror_program, rflags, mirror_data, dest_path)
+        if repo.arch == "src":
+            cmd = "%s --source" % cmd
+        else:
+            arch = repo.arch
+            if arch == "x86":
+               arch = "i386" # FIX potential arch errors
+            if arch == "x86_64":
+               arch = "amd64" # FIX potential arch errors
+            cmd = "%s --nosource -a %s" % (cmd, arch)
                     
-            rc = utils.subprocess_call(self.logger, cmd)
-            if rc !=0:
-                utils.die(self.logger,"cobbler reposync failed")
+        rc = utils.subprocess_call(self.logger, cmd)
+        if rc !=0:
+            utils.die(self.logger,"cobbler reposync failed")
 
        
     def create_local_file(self, dest_path, repo, output=True):
@@ -514,13 +492,7 @@ class RepoSync:
         optenabled = False
         optgpgcheck = False
         if output:
-            if repo.mirror_locally:
-                line = "baseurl=http://${server}/cobbler/repo_mirror/%s\n" % (repo.name)
-            else:
-                mstr = repo.mirror
-                if mstr.startswith("/"):
-                    mstr = "file://%s" % mstr
-                line = "baseurl=%s\n" % mstr
+            line = "baseurl=http://${server}/cobbler/repo_mirror/%s\n" % (repo.name)
   
             config_file.write(line)
             # user may have options specific to certain yum plugins
