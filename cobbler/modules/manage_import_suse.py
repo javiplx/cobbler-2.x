@@ -44,25 +44,9 @@ def register():
    return "manage/import"
 
 
-class ImportSuseManager:
+from cobbler.manage_import_base import ImportManagerBase
 
-    def __init__(self,config,logger):
-        """
-        Constructor
-        """
-        self.logger        = logger
-        self.config        = config
-        self.api           = config.api
-        self.distros       = config.distros()
-        self.profiles      = config.profiles()
-        self.systems       = config.systems()
-        self.settings      = config.settings()
-        self.repos         = config.repos()
-        self.templar       = templar.Templar(config)
-
-    # required function for import modules
-    def what(self):
-        return "import/%s" % self.__breed__
+class ImportSuseManager ( ImportManagerBase ) :
 
     __breed__ = "suse"
 
@@ -70,196 +54,12 @@ class ImportSuseManager:
           'suse'
        ]
 
-    # required function for import modules
-    def check_for_signature(self,path,cli_breed):
-       #self.logger.info("scanning %s for a %s-based distro signature" % (path,self.__breed__))
-       for signature in self.signatures:
-           d = os.path.join(path,signature)
-           if os.path.exists(d):
-               self.logger.info("Found a %s compatible signature: %s" % (self.__breed__,signature))
-               return (True,signature)
-
-       if cli_breed and cli_breed in self.get_valid_breeds():
-           self.logger.info("Warning: No distro signature for kernel at %s, using value from command line" % path)
-           return (True,None)
-
-       return (False,None)
-
-    # required function for import modules
-    def run(self,pkgdir,mirror,mirror_name,network_root=None,kickstart_file=None,rsync_flags=None,arch=None,breed=None,os_version=None):
-        self.pkgdir = pkgdir
-        self.mirror = mirror
-        self.mirror_name = mirror_name
-        self.network_root = network_root
-        self.kickstart_file = kickstart_file
-        self.rsync_flags = rsync_flags
-        self.arch = arch
-        self.breed = breed
-        self.os_version = os_version
-
-        # some fixups for the XMLRPC interface, which does not use "None"
-        if self.arch == "":           self.arch           = None
-        if self.mirror == "":         self.mirror         = None
-        if self.mirror_name == "":    self.mirror_name    = None
-        if self.kickstart_file == "": self.kickstart_file = None
-        if self.os_version == "":     self.os_version     = None
-        if self.rsync_flags == "":    self.rsync_flags    = None
-        if self.network_root == "":   self.network_root   = None
-
-        # If no breed was specified on the command line, set it to "suse" for this module
-        if self.breed == None:
-            self.set_breed_from_self()
-
-        # debug log stuff for testing
-        #self.logger.info("self.pkgdir = %s" % str(self.pkgdir))
-        #self.logger.info("self.mirror = %s" % str(self.mirror))
-        #self.logger.info("self.mirror_name = %s" % str(self.mirror_name))
-        #self.logger.info("self.network_root = %s" % str(self.network_root))
-        #self.logger.info("self.kickstart_file = %s" % str(self.kickstart_file))
-        #self.logger.info("self.rsync_flags = %s" % str(self.rsync_flags))
-        #self.logger.info("self.arch = %s" % str(self.arch))
-        #self.logger.info("self.breed = %s" % str(self.breed))
-        #self.logger.info("self.os_version = %s" % str(self.os_version))
-
-        # both --import and --name are required arguments
-
-        if self.mirror is None:
-            utils.die(self.logger,"import failed.  no --path specified")
-        if self.mirror_name is None:
-            utils.die(self.logger,"import failed.  no --name specified")
-
-        # if --arch is supplied, validate it to ensure it's valid
-
-        if self.arch is not None and self.arch != "":
-            self.arch = self.arch.lower()
-            if self.arch in ( 'x86' , 'i486', 'i586', 'i686' ):
-                # be consistent
-                self.arch = "i386"
-            if self.arch not in self.get_valid_arches():
-                utils.die(self.logger,"arch must be one of: %s" % string.join(self.get_valid_arches(),", "))
-
-        # if we're going to do any copying, set where to put things
-        # and then make sure nothing is already there.
-
-        self.path = os.path.normpath( "%s/ks_mirror/%s" % (self.settings.webdir, self.mirror_name) )
-        self.rootdir = os.path.normpath( "%s/ks_mirror/%s" % (self.settings.webdir, self.mirror_name) )
-        if os.path.exists(self.path) and self.arch is None:
-            # FIXME : Raise exception even when network_root is given ?
-            utils.die(self.logger,"Something already exists at this import location (%s).  You must specify --arch to avoid potentially overwriting existing files." % self.path)
-
-        # import takes a --kickstart for forcing selection that can't be used in all circumstances
-
-        if self.kickstart_file and not self.breed:
-            utils.die(self.logger,"Kickstart file can only be specified when a specific breed is selected")
-
-        if self.os_version and not self.breed:
-            utils.die(self.logger,"OS version can only be specified when a specific breed is selected")
-
-        if self.breed and self.breed.lower() not in self.get_valid_breeds():
-            utils.die(self.logger,"Supplied import breed is not supported by this module")
-
-        # if --arch is supplied, make sure the user is not importing a path with a different
-        # arch, which would just be silly.
-
-        if self.arch:
-            # append the arch path to the name if the arch is not already
-            # found in the name.
-            for x in self.get_valid_arches():
-                if self.path.lower().find(x) != -1:
-                    if self.arch != x :
-                        utils.die(self.logger,"Architecture found on pathname (%s) does not fit the one given in command line (%s)"%(x,self.arch))
-                    break
-            else:
-                # FIXME : This is very likely removed later at get_proposed_name, and the guessed arch appended again
-                self.path += ("-%s" % self.arch)
-
-        # make the output path and mirror content but only if not specifying that a network
-        # accessible support location already exists (this is --available-as on the command line)
-
-        if self.network_root is None:
-            # we need to mirror (copy) the files
-
-            utils.mkdir(self.path)
-
-            if self.mirror.startswith("http://") or self.mirror.startswith("ftp://") or self.mirror.startswith("nfs://"):
-
-                # http mirrors are kind of primative.  rsync is better.
-                # that's why this isn't documented in the manpage and we don't support them.
-                # TODO: how about adding recursive FTP as an option?
-
-                utils.die(self.logger,"unsupported protocol")
-
-            else:
-
-                # good, we're going to use rsync..
-                # we don't use SSH for public mirrors and local files.
-                # presence of user@host syntax means use SSH
-
-                # kick off the rsync now
-
-                if not utils.rsync_files(self.mirror, self.path, self.rsync_flags, self.logger, False):
-                    utils.die(self.logger, "failed to rsync the files")
-
-        else:
-
-            # rather than mirroring, we're going to assume the path is available
-            # over http, ftp, and nfs, perhaps on an external filer.  scanning still requires
-            # --mirror is a filesystem path, but --available-as marks the network path
-
-            if not os.path.exists(self.mirror):
-                utils.die(self.logger, "path does not exist: %s" % self.mirror)
-
-            # find the filesystem part of the path, after the server bits, as each distro
-            # URL needs to be calculated relative to this.
-
-            if not self.network_root.endswith("/"):
-                self.network_root = self.network_root + "/"
-            self.path = os.path.normpath( self.mirror )
-            valid_roots = [ "nfs://", "ftp://", "http://" ]
-            for valid_root in valid_roots:
-                if self.network_root.startswith(valid_root):
-                    break
-            else:
-                utils.die(self.logger, "Network root given to --available-as must be nfs://, ftp://, or http://")
-            if self.network_root.startswith("nfs://"):
-                try:
-                    (a,b,rest) = self.network_root.split(":",3)
-                except:
-                    utils.die(self.logger, "Network root given to --available-as is missing a colon, please see the manpage example.")
-
-        # now walk the filesystem looking for distributions that match certain patterns
-
-        self.logger.info("adding distros")
-        distros_added = []
-        # FIXME : search below self.path for isolinux configurations or known directories from TRY_LIST
-        os.path.walk(self.path, self.distro_adder, distros_added)
-
-        # find out if we can auto-create any repository records from the install tree
-
-        if self.network_root is None:
-            self.logger.info("associating repos")
-            # FIXME: this automagic is not possible (yet) without mirroring
-            self.repo_finder(distros_added)
-
-        # find the most appropriate answer files for each profile object
-
-        self.logger.info("associating kickstarts")
-        self.kickstart_finder(distros_added)
-
-        # ensure bootloaders are present
-        self.api.pxegen.copy_bootloaders()
-
-        return True
-
-    # required function for import modules
     def get_valid_arches(self):
         return ["i386", "ia64", "ppc", "ppc64", "s390", "s390x", "x86_64", "x86",]
 
-    # required function for import modules
     def get_valid_breeds(self):
         return ["suse",]
 
-    # required function for import modules
     def get_valid_os_versions(self):
         return []
 
@@ -277,28 +77,6 @@ class ImportSuseManager:
 #               b.find("centos") != -1:
 #                data2.append(x)
         return data2
-
-    def set_breed_from_self(self):
-        self.breed = self.__breed__
-
-    def repo_finder(self, distros_added):
-        """
-        This routine looks through all distributions and tries to find
-        any applicable repositories in those distributions for post-install
-        usage.
-        """
-
-        for distro in distros_added:
-            self.logger.info("traversing distro %s" % distro.name)
-            # FIXME : Shouldn't decide this the value of self.network_root ?
-            if distro.kernel.find("ks_mirror") != -1:
-                basepath = os.path.dirname(distro.kernel)
-                top = self.get_rootdir()
-                self.logger.info("descent into %s" % top)
-                # FIXME : The location of repo definition is known from breed
-                os.path.walk(top, self.repo_scanner, distro)
-            else:
-                self.logger.info("this distro isn't mirrored")
 
     def repo_scanner(self,distro,dirname,fnames):
         """
@@ -445,6 +223,7 @@ class ImportSuseManager:
             distro.set_initrd(initrd)
             distro.set_arch(pxe_arch)
             distro.set_breed(self.breed)
+            # FIXME : line setting kernel option is specific to SuSE
             distro.set_kernel_options("install=http://@@http_server@@/cblr/links/%s" % (name))
             # If a version was supplied on command line, we set it now
             if self.os_version:
@@ -530,48 +309,6 @@ class ImportSuseManager:
 
         return name
 
-    def get_proposed_arch(self,dirname):
-        """
-        Given an directory name, can we infer an architecture from a path segment?
-        """
-        if dirname.find("x86_64") != -1 or dirname.find("amd") != -1:
-            return "x86_64"
-        if dirname.find("ia64") != -1:
-            return "ia64"
-        if dirname.find("i386") != -1 or dirname.find("386") != -1 or dirname.find("x86") != -1:
-            return "i386"
-        if dirname.find("s390x") != -1:
-            return "s390x"
-        if dirname.find("s390") != -1:
-            return "s390"
-        if dirname.find("ppc64") != -1 or dirname.find("chrp") != -1:
-            return "ppc64"
-        if dirname.find("ppc32") != -1:
-            return "ppc"
-        if dirname.find("ppc") != -1:
-            return "ppc"
-        return None
-
-    def arch_walker(self,foo,dirname,fnames):
-        """
-        See docs on learn_arch_from_tree.
-
-        The TRY_LIST is used to speed up search, and should be dropped for default importer
-        Searched kernel names are kernel-header, linux-headers-, kernel-largesmp, kernel-hugemem
-
-        This method is useful to get the archs, but also to package type and a raw guess of the breed
-        """
-
-        # try to find a kernel header RPM and then look at it's arch.
-        for x in fnames:
-            if self.match_kernelarch_file(x):
-                for arch in self.get_valid_arches():
-                    if x.find(arch) != -1:
-                        foo[arch] = 1
-                for arch in [ "i686" , "amd64" ]:
-                    if x.find(arch) != -1:
-                        foo[arch] = 1
-
     def kickstart_finder(self,distros_added):
         """
         For all of the profiles in the config w/o a kickstart, use the
@@ -623,54 +360,8 @@ class ImportSuseManager:
         # how we set the tree depends on whether an explicit network_root was specified
         return "http://@@http_server@@/cblr/links/%s" % (distro.name)
 
-    def configure_tree_location(self, distro):
-        """
-        Once a distribution is identified, find the part of the distribution
-        that has the URL in it that we want to use for kickstarting the
-        distribution, and create a ksmeta variable $tree that contains this.
-        """
-
-        base = self.get_rootdir()
-
-        if self.network_root is None:
-            tree = self.get_local_tree(distro)
-            self.set_install_tree( distro, tree)
-        else:
-            # where we assign the kickstart source is relative to our current directory
-            # and the input start directory in the crawl.  We find the path segments
-            # between and tack them on the network source path to find the explicit
-            # network path to the distro that Anaconda can digest.
-            tail = utils.path_tail(self.path, base)
-            tree = self.network_root[:-1] + tail
-            self.set_install_tree( distro, tree)
-
     def get_rootdir(self):
         return self.rootdir
-
-    def get_pkgdir(self):
-        if not self.pkgdir:
-            return None
-        return os.path.join(self.get_rootdir(),self.pkgdir)
-
-    def set_install_tree(self, distro, url):
-        distro.ks_meta["tree"] = url
-
-    def learn_arch_from_tree(self):
-        """
-        If a distribution is imported from DVD, there is a good chance the path doesn't
-        contain the arch and we should add it back in so that it's part of the
-        meaningful name ... so this code helps figure out the arch name.  This is important
-        for producing predictable distro names (and profile names) from differing import sources
-        """
-        result = {}
-        # FIXME : this is called only once, should not be a walk
-        if self.get_pkgdir():
-            os.path.walk(self.get_pkgdir(), self.arch_walker, result)
-        if result.pop("amd64",False):
-            result["x86_64"] = 1
-        if result.pop("i686",False):
-            result["i386"] = 1
-        return result.keys()
 
     def match_kernelarch_file(self, filename):
         """
