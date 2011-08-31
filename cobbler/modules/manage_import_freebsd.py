@@ -86,11 +86,37 @@ class ImportFreeBSDManager ( ImportManagerBase ) :
                     data2.append(x)
         return data2
 
+    def is_initrd(self,filename):
+        if filename == "mfsroot.gz":
+            return True
+        return False
+
+    def is_kernel(self,filename):
+        if filename in ( "pxeboot" , "pxeboot.bs" ):
+            return True
+        return False
+
+    def get_name_from_dirname(self,dirname):
+        return self.mirror_name + "-".join(utils.path_tail(os.path.dirname(self.path),dirname).split("/"))
+
+    def get_local_tree(self, distro):
+        base = self.get_rootdir()
+        dest_link = os.path.join(self.settings.webdir, "links", distro.name)
+        # create the links directory only if we are mirroring because with
+        # SELinux Apache can't symlink to NFS (without some doing)
+        if not os.path.exists(dest_link):
+            try:
+                os.symlink(base, dest_link)
+            except:
+                # this shouldn't happen but I've seen it ... debug ...
+                self.logger.warning("symlink creation failed: %s, %s" % (base,dest_link))
+        # how we set the tree depends on whether an explicit network_root was specified
+        return "http://@@http_server@@/cblr/links/%s" % (distro.name)
+
+    def get_rootdir(self):
+        return self.rootdir
+
     def repo_scanner(self,distro,dirname,fnames):
-        """
-        This is an os.path.walk routine that looks for potential yum repositories
-        to be added to the configuration for post-install usage.
-        """
 
         matches = {}
         for x in fnames:
@@ -188,22 +214,7 @@ class ImportFreeBSDManager ( ImportManagerBase ) :
             self.logger.error("error launching createrepo (not installed?), ignoring")
             utils.log_exc(self.logger)
 
-    def is_initrd(self,filename):
-        if filename == "mfsroot.gz":
-            return True
-        return False
-
-    def is_kernel(self,filename):
-        if filename in ( "pxeboot" , "pxeboot.bs" ):
-            return True
-        return False
-
     def add_entry(self,dirname,kernel,initrd):
-        """
-        When we find a directory with a valid kernel/initrd in it, create the distribution objects
-        as appropriate and save them.  This includes creating xen and rescue distros/profiles
-        if possible.
-        """
 
         proposed_name = self.get_proposed_name(dirname,kernel)
         proposed_arch = self.get_proposed_arch(dirname)
@@ -294,14 +305,7 @@ class ImportFreeBSDManager ( ImportManagerBase ) :
 
         return distros_added
 
-    def get_name_from_dirname(self,dirname):
-        return self.mirror_name + "-".join(utils.path_tail(os.path.dirname(self.path),dirname).split("/"))
-
     def get_proposed_name(self,dirname,kernel=None):
-        """
-        Given a directory name where we have a kernel/initrd pair, try to autoname
-        the distribution (and profile) object based on the contents of that path
-        """
 
         if self.network_root is not None:
             name = self.get_name_from_dirname(dirname)
@@ -318,13 +322,16 @@ class ImportFreeBSDManager ( ImportManagerBase ) :
 
         return name
 
+    def match_kernelarch_file(self, filename):
+
+        if not filename.endswith("rpm") and not filename.endswith("deb"):
+            return False
+        for match in ["kernel-header", "kernel-source", "kernel-smp", "kernel-largesmp", "kernel-hugemem", "linux-headers-", "kernel-devel", "kernel-"]:
+            if filename.find(match) != -1:
+                return True
+        return False
+
     def kickstart_finder(self,distros_added):
-        """
-        For all of the profiles in the config w/o a answerfile, use the
-        given answerfile, or look at the kernel path, from that,
-        see if we can guess the distro, and if we can, assign a answerfile
-        if one is available for it.
-        """
         for profile in self.profiles:
             distro = self.distros.find(name=profile.get_conceptual_parent().name)
             if distro is None or not (distro in distros_added):
@@ -362,30 +369,7 @@ class ImportFreeBSDManager ( ImportManagerBase ) :
             self.distros.add(distro,save=True) # re-save
             self.api.serialize()
 
-    def get_local_tree(self, distro):
-        base = self.get_rootdir()
-        dest_link = os.path.join(self.settings.webdir, "links", distro.name)
-        # create the links directory only if we are mirroring because with
-        # SELinux Apache can't symlink to NFS (without some doing)
-        if not os.path.exists(dest_link):
-            try:
-                os.symlink(base, dest_link)
-            except:
-                # this shouldn't happen but I've seen it ... debug ...
-                self.logger.warning("symlink creation failed: %s, %s" % (base,dest_link))
-        # how we set the tree depends on whether an explicit network_root was specified
-        return "http://@@http_server@@/cblr/links/%s" % (distro.name)
-
-    def get_rootdir(self):
-        return self.rootdir
-
     def learn_arch_from_tree(self):
-        """
-        If a distribution is imported from DVD, there is a good chance the path doesn't
-        contain the arch and we should add it back in so that it's part of the
-        meaningful name ... so this code helps figure out the arch name.  This is important
-        for producing predictable distro names (and profile names) from differing import sources
-        """
         result = {}
         # FIXME : this is called only once, should not be a walk
         # FIXME : base class uses get_pkgdir() to start walking
@@ -397,22 +381,7 @@ class ImportFreeBSDManager ( ImportManagerBase ) :
             result["i386"] = 1
         return result.keys()
 
-    def match_kernelarch_file(self, filename):
-        """
-        Is the given filename a kernel filename?
-        """
-
-        if not filename.endswith("rpm") and not filename.endswith("deb"):
-            return False
-        for match in ["kernel-header", "kernel-source", "kernel-smp", "kernel-largesmp", "kernel-hugemem", "linux-headers-", "kernel-devel", "kernel-"]:
-            if filename.find(match) != -1:
-                return True
-        return False
-
     def scan_pkg_filename(self, file):
-        """
-        Determine what the distro is based on the release package filename.
-        """
         release_file = os.path.basename(file)
 
         if release_file.lower().find("release") != -1:
@@ -428,17 +397,9 @@ class ImportFreeBSDManager ( ImportManagerBase ) :
         return (flavor, major, minor)
 
     def get_datestamp(self):
-        """
-        Based on a FreeBSD tree find the creation timestamp
-        """
         pass
 
     def set_variance(self, flavor, major, minor, arch):
-        """
-        find the profile answerfile and set the distro breed/os-version based on what
-        we can find out from the filenames and then return the answerfile
-        path to use.
-        """
 
         os_version = "%s%s.%s" % (flavor,major,minor)
         answerfile = "/var/lib/cobbler/kickstarts/default.ks"

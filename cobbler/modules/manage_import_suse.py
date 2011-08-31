@@ -78,11 +78,37 @@ class ImportSuseManager ( ImportManagerBase ) :
 #                data2.append(x)
         return data2
 
+    def is_initrd(self,filename):
+        if ( filename.startswith("initrd") or filename.startswith("ramdisk.image.gz") ) and filename != "initrd.size":
+            return True
+        return False
+
+    def is_kernel(self,filename):
+        if ( filename.startswith("vmlinu") or filename.startswith("kernel.img") or filename.startswith("linux") ) and filename.find("initrd") == -1:
+            return True
+        return False
+
+    def get_name_from_dirname(self,dirname):
+        return self.mirror_name + "-".join(utils.path_tail(os.path.dirname(self.path),dirname).split("/"))
+
+    def get_local_tree(self, distro):
+        base = self.get_rootdir()
+        dest_link = os.path.join(self.settings.webdir, "links", distro.name)
+        # create the links directory only if we are mirroring because with
+        # SELinux Apache can't symlink to NFS (without some doing)
+        if not os.path.exists(dest_link):
+            try:
+                os.symlink(base + "-" + distro.arch, dest_link)
+            except:
+                # this shouldn't happen but I've seen it ... debug ...
+                self.logger.warning("symlink creation failed: %s, %s" % (base,dest_link))
+        # how we set the tree depends on whether an explicit network_root was specified
+        return "http://@@http_server@@/cblr/links/%s" % (distro.name)
+
+    def get_rootdir(self):
+        return self.rootdir
+
     def repo_scanner(self,distro,dirname,fnames):
-        """
-        This is an os.path.walk routine that looks for potential yum repositories
-        to be added to the configuration for post-install usage.
-        """
 
         matches = {}
         for x in fnames:
@@ -104,21 +130,7 @@ class ImportSuseManager ( ImportManagerBase ) :
     def process_comps_file(self, comps_path, distro):
         pass
 
-    def is_initrd(self,filename):
-        if ( filename.startswith("initrd") or filename.startswith("ramdisk.image.gz") ) and filename != "initrd.size":
-            return True
-        return False
-
-    def is_kernel(self,filename):
-        if ( filename.startswith("vmlinu") or filename.startswith("kernel.img") or filename.startswith("linux") ) and filename.find("initrd") == -1:
-            return True
-        return False
-
     def distro_adder(self,distros_added,dirname,fnames):
-        """
-        This is an os.path.walk routine that finds distributions in the directory
-        to be scanned and then creates them.
-        """
 
         # FIXME: If there are more than one kernel or initrd image on the same directory,
         # results are unpredictable
@@ -167,115 +179,7 @@ class ImportSuseManager ( ImportManagerBase ) :
             for adtl in adtls:
                 distros_added.extend(adtl)
 
-    def add_entry(self,dirname,kernel,initrd):
-        """
-        When we find a directory with a valid kernel/initrd in it, create the distribution objects
-        as appropriate and save them.  This includes creating xen and rescue distros/profiles
-        if possible.
-        """
-
-        proposed_name = self.get_proposed_name(dirname,kernel)
-        proposed_arch = self.get_proposed_arch(dirname)
-
-        if self.arch and proposed_arch and self.arch != proposed_arch:
-            utils.die(self.logger,"Arch from pathname (%s) does not match with supplied one %s"%(proposed_arch,self.arch))
-
-        archs = self.learn_arch_from_tree()
-        if not archs:
-            if self.arch:
-                archs.append( self.arch )
-        else:
-            if self.arch and self.arch not in archs:
-                utils.die(self.logger, "Given arch (%s) not found on imported tree %s"%(self.arch,self.get_pkgdir()))
-        if proposed_arch:
-            if archs and proposed_arch not in archs:
-                self.logger.warning("arch from pathname (%s) not found on imported tree %s" % (proposed_arch,self.get_pkgdir()))
-                return
-
-            archs = [ proposed_arch ]
-
-        if len(archs)>1:
-            if self.breed in ( "redhat" , "suse" ):
-                self.logger.warning("directory %s holds multiple arches : %s" % (dirname, archs))
-                return
-            self.logger.warning("- Warning : Multiple archs found : %s" % (archs))
-
-        distros_added = []
-
-        for pxe_arch in archs:
-            name = proposed_name + "-" + pxe_arch
-            existing_distro = self.distros.find(name=name)
-
-            if existing_distro is not None:
-                self.logger.warning("skipping import, as distro name already exists: %s" % name)
-                continue
-
-            else:
-                self.logger.info("creating new distro: %s" % name)
-                distro = self.config.new_distro()
-
-            if name.find("-autoboot") != -1:
-                # this is an artifact of some EL-3 imports
-                continue
-
-            distro.set_name(name)
-            distro.set_kernel(kernel)
-            distro.set_initrd(initrd)
-            distro.set_arch(pxe_arch)
-            distro.set_breed(self.breed)
-            # FIXME : line setting kernel option is specific to SuSE
-            distro.set_kernel_options("install=http://@@http_server@@/cblr/links/%s" % (name))
-            # If a version was supplied on command line, we set it now
-            if self.os_version:
-                distro.set_os_version(self.os_version)
-
-            self.distros.add(distro,save=True)
-            distros_added.append(distro)
-
-            existing_profile = self.profiles.find(name=name)
-
-            # see if the profile name is already used, if so, skip it and
-            # do not modify the existing profile
-
-            if existing_profile is None:
-                self.logger.info("creating new profile: %s" % name)
-                #FIXME: The created profile holds a default kickstart, and should be breed specific
-                profile = self.config.new_profile()
-            else:
-                self.logger.info("skipping existing profile, name already exists: %s" % name)
-                continue
-
-            # save our minimal profile which just points to the distribution and a good
-            # default answer file
-
-            profile.set_name(name)
-            profile.set_distro(name)
-            profile.set_kickstart(self.kickstart_file)
-
-            # depending on the name of the profile we can define a good virt-type
-            # for usage with koan
-
-            if name.find("vmware") != -1 or self.breed in ( "vmware" , "freebsd" ):
-                profile.set_virt_type("vmware")
-            elif name.find("-xen") != -1:
-                profile.set_virt_type("xenpv")
-            else:
-                profile.set_virt_type("qemu")
-
-            # save our new profile to the collection
-
-            self.profiles.add(profile,save=True)
-
-        return distros_added
-
-    def get_name_from_dirname(self,dirname):
-        return self.mirror_name + "-".join(utils.path_tail(os.path.dirname(self.path),dirname).split("/"))
-
     def get_proposed_name(self,dirname,kernel=None):
-        """
-        Given a directory name where we have a kernel/initrd pair, try to autoname
-        the distribution (and profile) object based on the contents of that path
-        """
 
         if self.network_root is not None:
             name = self.get_name_from_dirname(dirname)
@@ -309,13 +213,16 @@ class ImportSuseManager ( ImportManagerBase ) :
 
         return name
 
+    def match_kernelarch_file(self, filename):
+
+        if not filename.endswith("rpm") and not filename.endswith("deb"):
+            return False
+        for match in ["kernel-header", "kernel-source", "kernel-smp", "kernel-default", "kernel-desktop", "linux-headers-", "kernel-devel", "kernel-"]:
+            if filename.find(match) != -1:
+                return True
+        return False
+
     def kickstart_finder(self,distros_added):
-        """
-        For all of the profiles in the config w/o a kickstart, use the
-        given kickstart file, or look at the kernel path, from that,
-        see if we can guess the distro, and if we can, assign a kickstart
-        if one is available for it.
-        """
         for profile in self.profiles:
             distro = self.distros.find(name=profile.get_conceptual_parent().name)
             if distro is None or not (distro in distros_added):
@@ -346,45 +253,10 @@ class ImportSuseManager ( ImportManagerBase ) :
             self.distros.add(distro,save=True) # re-save
             self.api.serialize()
 
-    def get_local_tree(self, distro):
-        base = self.get_rootdir()
-        dest_link = os.path.join(self.settings.webdir, "links", distro.name)
-        # create the links directory only if we are mirroring because with
-        # SELinux Apache can't symlink to NFS (without some doing)
-        if not os.path.exists(dest_link):
-            try:
-                os.symlink(base + "-" + distro.arch, dest_link)
-            except:
-                # this shouldn't happen but I've seen it ... debug ...
-                self.logger.warning("symlink creation failed: %s, %s" % (base,dest_link))
-        # how we set the tree depends on whether an explicit network_root was specified
-        return "http://@@http_server@@/cblr/links/%s" % (distro.name)
-
-    def get_rootdir(self):
-        return self.rootdir
-
-    def match_kernelarch_file(self, filename):
-        """
-        Is the given filename a kernel filename?
-        """
-
-        if not filename.endswith("rpm") and not filename.endswith("deb"):
-            return False
-        for match in ["kernel-header", "kernel-source", "kernel-smp", "kernel-default", "kernel-desktop", "linux-headers-", "kernel-devel", "kernel-"]:
-            if filename.find(match) != -1:
-                return True
-        return False
-
     def scan_pkg_filename(self, file):
-        """
-        Determine what the distro is based on the release package filename.
-        """
         return ("suse", 1, 1)
 
     def get_datestamp(self):
-        """
-        Based on a RedHat tree find the creation timestamp
-        """
         base = self.get_rootdir()
         if os.path.exists("%s/.discinfo" % base):
             discinfo = open("%s/.discinfo" % base, "r")
@@ -395,11 +267,6 @@ class ImportSuseManager ( ImportManagerBase ) :
         return float(datestamp)
 
     def set_variance(self, flavor, major, minor, arch):
-        """
-        find the profile kickstart and set the distro breed/os-version based on what
-        we can find out from the rpm filenames and then return the kickstart
-        path to use.
-        """
 
         os_version = "suse"
 

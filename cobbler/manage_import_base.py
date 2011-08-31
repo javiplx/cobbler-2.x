@@ -370,10 +370,6 @@ Needs to be overriden if a single importer can be used for multple breeds"""
             for adtl in adtls:
                 distros_added.extend(adtl)
 
-    def get_name_from_dirname(self,dirname):
-        return self.mirror_name + "-".join(utils.path_tail(os.path.dirname(self.path),dirname).split("/"))
-
-
     def add_entry(self,dirname,kernel,initrd):
         """
         When we find a directory with a valid kernel/initrd in it, create the distribution objects
@@ -430,6 +426,8 @@ Needs to be overriden if a single importer can be used for multple breeds"""
             distro.set_initrd(initrd)
             distro.set_arch(pxe_arch)
             distro.set_breed(self.breed)
+            if self.breed == "suse" :
+                distro.set_kernel_options("install=http://@@http_server@@/cblr/links/%s" % (name))
             # If a version was supplied on command line, we set it now
             if self.os_version:
                 distro.set_os_version(self.os_version)
@@ -623,7 +621,7 @@ Needs to be overriden if a single importer can be used for multple breeds"""
             result["i386"] = 1
         return result.keys()
 
-    # NOTE : the methods below are not used in base class but on common
+    # NOTE : the method below is not used in base class but on common
     #   implementations of kickstart_finder()
 
     def scan_pkg_filename(self, file):
@@ -631,6 +629,8 @@ Needs to be overriden if a single importer can be used for multple breeds"""
         Determine what the distro is based on the release package filename.
         """
         raise NotImplemented( "needs to be implemented" , self , "scan_pkg_filename" )
+
+    # NOTE : methods below are only used in RedHat alike kickstart_finder implementations
 
     def get_datestamp(self):
         """

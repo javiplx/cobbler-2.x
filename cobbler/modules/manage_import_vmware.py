@@ -76,9 +76,6 @@ class ImportVMWareManager ( ImportManagerBase ) :
         return ["rsync", "rhn", "yum",]
 
     def get_release_files(self):
-        """
-        Find distro release packages.
-        """
         data = glob.glob(os.path.join(self.get_pkgdir(), "vmware-esx-vmware-release-*"))
         data2 = []
         for x in data:
@@ -90,14 +87,40 @@ class ImportVMWareManager ( ImportManagerBase ) :
             return glob.glob(os.path.join(self.get_rootdir(), "vmkernel.gz"))
         return data2
 
+    def is_initrd(self,filename):
+        if ( filename.startswith("initrd") or filename.startswith("ramdisk.image.gz") or filename.startswith("vmkboot.gz") ) and filename != "initrd.size":
+            return True
+        return False
+
+    def is_kernel(self,filename):
+        if ( filename.startswith("vmlinu") or filename.startswith("kernel.img") or filename.startswith("linux") or filename.startswith("mboot.c32") ) and filename.find("initrd") == -1:
+            return True
+        return False
+
+    def get_name_from_dirname(self,dirname):
+        return self.mirror_name + "-".join(utils.path_tail(os.path.dirname(self.path),dirname).split("/"))
+
+    def get_local_tree(self, distro):
+        base = self.get_rootdir()
+        dest_link = os.path.join(self.settings.webdir, "links", distro.name)
+        # create the links directory only if we are mirroring because with
+        # SELinux Apache can't symlink to NFS (without some doing)
+        if not os.path.exists(dest_link):
+            try:
+                os.symlink(base, dest_link)
+            except:
+                # this shouldn't happen but I've seen it ... debug ...
+                self.logger.warning("symlink creation failed: %s, %s" % (base,dest_link))
+        # how we set the tree depends on whether an explicit network_root was specified
+        return "http://@@http_server@@/cblr/links/%s" % (distro.name)
+
+    def get_rootdir(self):
+        return self.rootdir
+
     def repo_finder(self, distros_added):
         pass
 
     def repo_scanner(self,distro,dirname,fnames):
-        """
-        This is an os.path.walk routine that looks for potential yum repositories
-        to be added to the configuration for post-install usage.
-        """
 
         matches = {}
         for x in fnames:
@@ -195,26 +218,16 @@ class ImportVMWareManager ( ImportManagerBase ) :
             self.logger.error("error launching createrepo (not installed?), ignoring")
             utils.log_exc(self.logger)
 
-    def is_initrd(self,filename):
-        if ( filename.startswith("initrd") or filename.startswith("ramdisk.image.gz") or filename.startswith("vmkboot.gz") ) and filename != "initrd.size":
-            return True
-        return False
+    def match_kernelarch_file(self, filename):
 
-    def is_kernel(self,filename):
-        if ( filename.startswith("vmlinu") or filename.startswith("kernel.img") or filename.startswith("linux") or filename.startswith("mboot.c32") ) and filename.find("initrd") == -1:
-            return True
+        if not filename.endswith("rpm") and not filename.endswith("deb"):
+            return False
+        for match in ["kernel-header", "kernel-source", "kernel-smp", "kernel-largesmp", "kernel-hugemem", "linux-headers-", "kernel-devel", "kernel-"]:
+            if filename.find(match) != -1:
+                return True
         return False
-
-    def get_name_from_dirname(self,dirname):
-        return self.mirror_name + "-".join(utils.path_tail(os.path.dirname(self.path),dirname).split("/"))
 
     def kickstart_finder(self,distros_added):
-        """
-        For all of the profiles in the config w/o a kickstart, use the
-        given kickstart file, or look at the kernel path, from that,
-        see if we can guess the distro, and if we can, assign a kickstart
-        if one is available for it.
-        """
         for profile in self.profiles:
             distro = self.distros.find(name=profile.get_conceptual_parent().name)
             if distro is None or not (distro in distros_added):
@@ -255,39 +268,7 @@ class ImportVMWareManager ( ImportManagerBase ) :
             self.distros.add(distro,save=True) # re-save
             self.api.serialize()
 
-    def get_local_tree(self, distro):
-        base = self.get_rootdir()
-        dest_link = os.path.join(self.settings.webdir, "links", distro.name)
-        # create the links directory only if we are mirroring because with
-        # SELinux Apache can't symlink to NFS (without some doing)
-        if not os.path.exists(dest_link):
-            try:
-                os.symlink(base, dest_link)
-            except:
-                # this shouldn't happen but I've seen it ... debug ...
-                self.logger.warning("symlink creation failed: %s, %s" % (base,dest_link))
-        # how we set the tree depends on whether an explicit network_root was specified
-        return "http://@@http_server@@/cblr/links/%s" % (distro.name)
-
-    def get_rootdir(self):
-        return self.rootdir
-
-    def match_kernelarch_file(self, filename):
-        """
-        Is the given filename a kernel filename?
-        """
-
-        if not filename.endswith("rpm") and not filename.endswith("deb"):
-            return False
-        for match in ["kernel-header", "kernel-source", "kernel-smp", "kernel-largesmp", "kernel-hugemem", "linux-headers-", "kernel-devel", "kernel-"]:
-            if filename.find(match) != -1:
-                return True
-        return False
-
     def scan_pkg_filename(self, file):
-        """
-        Determine what the distro is based on the release package filename.
-        """
         rpm_file = os.path.basename(file)
 
         if rpm_file.lower().find("-esx-") != -1:
@@ -330,15 +311,9 @@ class ImportVMWareManager ( ImportManagerBase ) :
         return (flavor, major, minor, release, update)
 
     def get_datestamp(self):
-        """
-        Based on a VMWare tree find the creation timestamp
-        """
         pass
 
     def set_variance(self, flavor, major, minor, arch):
-        """
-        Set distro specific versioning.
-        """
         release , update = arch
         os_version = "%s%s" % (flavor, major)
         if flavor == "esx4":
