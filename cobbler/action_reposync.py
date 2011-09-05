@@ -206,9 +206,7 @@ class RepoSync:
         Handle copying of rsync:// and rsync-over-ssh repos.
         """
 
-        repo_mirror = repo.mirror
-
-        if repo.rpm_list != "" and repo.rpm_list != []:
+        if repo.rpm_list :
             self.logger.warning("--rpm-list is not supported for rsync'd repositories")
 
         # FIXME: don't hardcode
@@ -229,21 +227,11 @@ class RepoSync:
         Handle mirroring of RHN repos.
         """
 
-        repo_mirror = repo.mirror
-
-        # FIXME? warn about not having yum-utils.  We don't want to require it in the package because
-        # RHEL4 and RHEL5U0 don't have it.
+        if repo.rpm_list:
+            self.logger.warning("warning: --rpm-list is not supported for RHN content")
 
         if not os.path.exists("/usr/bin/reposync"):
             utils.die(self.logger,"no /usr/bin/reposync found, please install yum-utils")
-
-        cmd = ""                  # command to run
-        has_rpm_list = False      # flag indicating not to pull the whole repo
-
-        # detect cases that require special handling
-
-        if repo.rpm_list != "" and repo.rpm_list != []:
-            has_rpm_list = True
 
         # create yum config file for use by reposync
         # FIXME: don't hardcode
@@ -254,8 +242,6 @@ class RepoSync:
             # FIXME: there's a chance this might break the RHN D/L case
             os.makedirs(temp_path)
          
-        if has_rpm_list:
-            self.logger.warning("warning: --rpm-list is not supported for RHN content")
         rest = repo.mirror[6:] # everything after rhn://
         cmd = "/usr/bin/reposync %s -r %s --download_path=%s" % (self.rflags, rest, self.settings.webdir+"/repo_mirror")
         if repo.name != rest:
@@ -293,21 +279,8 @@ class RepoSync:
         Handle copying of http:// and ftp:// yum repos.
         """
 
-        repo_mirror = repo.mirror
-
-        # warn about not having yum-utils.  We don't want to require it in the package because
-        # RHEL4 and RHEL5U0 don't have it.
-
         if not os.path.exists("/usr/bin/reposync"):
             utils.die(self.logger,"no /usr/bin/reposync found, please install yum-utils")
-
-        cmd = ""                  # command to run
-        has_rpm_list = False      # flag indicating not to pull the whole repo
-
-        # detect cases that require special handling
-
-        if repo.rpm_list != "" and repo.rpm_list != []:
-            has_rpm_list = True
 
         # create yum config file for use by reposync
         dest_path = os.path.join(self.settings.webdir+"/repo_mirror", repo.name)
@@ -321,7 +294,7 @@ class RepoSync:
 
         temp_file = self.create_local_file(temp_path, repo, output=False)
 
-        if not has_rpm_list:
+        if not repo.rpm_list:
             # if we have not requested only certain RPMs, use reposync
             cmd = "/usr/bin/reposync %s --config=%s --repoid=%s --download_path=%s" % (self.rflags, temp_file, repo.name, self.settings.webdir+"/repo_mirror")
             if repo.arch != "":
@@ -348,10 +321,6 @@ class RepoSync:
             extra_flags = self.settings.yumdownloader_flags
             cmd = "/usr/bin/yumdownloader %s %s --disablerepo=* --enablerepo=%s -c %s --destdir=%s %s" % (extra_flags, use_source, repo.name, temp_file, dest_path, " ".join(repo.rpm_list))
 
-        # now regardless of whether we're doing yumdownloader or reposync
-        # or whether the repo was http://, ftp://, or rhn://, execute all queued
-        # commands here.  Any failure at any point stops the operation.
-
         rc = utils.subprocess_call(self.logger, cmd)
         if rc !=0:
             utils.die(self.logger,"cobbler reposync failed")
@@ -362,7 +331,7 @@ class RepoSync:
             utils.die(self.logger,"no /usr/bin/wget found, please install wget")
 
         # grab repomd.xml and use it to download any metadata we can use
-        cmd2 = "/usr/bin/wget -q %s/repodata/repomd.xml -O %s/repomd.xml" % (repo_mirror, temp_path)
+        cmd2 = "/usr/bin/wget -q %s/repodata/repomd.xml -O %s/repomd.xml" % (repo.mirror, temp_path)
         rc = utils.subprocess_call(self.logger,cmd2)
         if rc == 0:
             # create our repodata directory now, as any extra metadata we're
@@ -374,7 +343,7 @@ class RepoSync:
                 # don't download metadata files that are created by default
                 if mdtype not in ["primary", "primary_db", "filelists", "filelists_db", "other", "other_db"]:
                     mdfile = rmd.getData(mdtype).location[1]
-                    cmd3 = "/usr/bin/wget -q %s/%s -O %s/%s" % (repo_mirror, mdfile, dest_path, mdfile)
+                    cmd3 = "/usr/bin/wget -q %s/%s -O %s/%s" % (repo.mirror, mdfile, dest_path, mdfile)
                     utils.subprocess_call(self.logger,cmd3)
                     if rc !=0:
                         utils.die(self.logger,"wget failed")
@@ -394,21 +363,12 @@ class RepoSync:
         Handle copying of http:// and ftp:// debian repos.
         """
 
-        repo_mirror = repo.mirror
-
-        # warn about not having mirror program.
+        if repo.rpm_list :
+            self.logger.warning(self.logger,"--rpm-list not yet supported on apt repos")
 
         mirror_program = "/usr/bin/debmirror"
         if not os.path.exists(mirror_program):
             utils.die(self.logger,"no %s found, please install it"%(mirror_program))
-
-        cmd = ""                  # command to run
-        has_rpm_list = False      # flag indicating not to pull the whole repo
-
-        # detect cases that require special handling
-
-        if repo.rpm_list != "" and repo.rpm_list != []:
-            utils.die(self.logger,"has_rpm_list not yet supported on apt repos")
 
         if not repo.arch:
             utils.die(self.logger,"Architecture is required for apt repositories")
