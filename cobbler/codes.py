@@ -53,11 +53,6 @@ VALID_OS_VERSIONS = {
     "other"   : [ "msdos", "netware4", "netware5", "netware6", "generic", "other" ]
 }
 
-VALID_REPO_BREEDS = [
-#    "rsync", "rhn", "yum", "apt"
-     "rsync", "rhn", "yum"
-]
-
 def uniquify(seq, idfun=None):
 
     # this is odd (older mod_python scoping bug?) but we can't use 

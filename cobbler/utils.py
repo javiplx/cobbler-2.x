@@ -1334,26 +1334,6 @@ def set_breed(self,breed):
    nicer = ", ".join(valid_breeds)
    raise CX(_("invalid value for --breed (%s), must be one of %s, different breeds have different levels of support") % (breed, nicer))
 
-def set_repo_os_version(self,os_version):
-   if os_version == "" or os_version is None:
-      self.os_version = ""
-      return True
-   self.os_version = os_version.lower()
-   if self.breed is None or self.breed == "":
-      raise CX(_("cannot set --os-version without setting --breed first"))
-   if not self.breed in codes.VALID_REPO_BREEDS:
-      raise CX(_("fix --breed first before applying this setting"))
-   self.os_version = os_version
-   return True
-
-def set_repo_breed(self,breed):
-   valid_breeds = codes.VALID_REPO_BREEDS
-   if breed is not None and breed.lower() in valid_breeds:
-       self.breed = breed.lower()
-       return True
-   nicer = ", ".join(valid_breeds)
-   raise CX(_("invalid value for --breed (%s), must be one of %s, different breeds have different levels of support") % (breed, nicer))
-
 def set_repos(self,repos,bypass_check=False):
    # WARNING: hack
    # repos = fix_mod_python_select_submission(repos)

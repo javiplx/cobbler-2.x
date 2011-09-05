@@ -25,13 +25,14 @@ import item
 from cexceptions import *
 from utils import _
 import time
-import codes
+
+VALID_REPO_BREEDS = ( "rsync", "rhn", "yum", "apt" )
 
 # this datastructure is described in great detail in item_distro.py -- read the comments there.
 
 FIELDS = [
   ["arch","",0,"Arch",True,"ex: i386, x86_64",['i386','x86_64','ia64','ppc','s390', 'noarch', 'src'],"str"],
-  ["breed","",0,"Breed",True,"",codes.VALID_REPO_BREEDS,"str"],
+  ["breed","",0,"Breed",True,"",VALID_REPO_BREEDS,"str"],
   ["comment","",0,"Comment",True,"Free form text description",0,"str"],
   ["ctime",0,0,"",False,"",0,"float"],
   ["depth",2,0,"",False,"",0,"float"],
@@ -43,7 +44,7 @@ FIELDS = [
   ["owners","SETTINGS:default_ownership",0,"Owners",True,"Owners list for authz_ownership (space delimited)",[],"list"],
   ["parent",None,0,"",False,"",0,"str"],
   ["rpm_list",[],0,"RPM List",True,"Mirror just these RPMs (yum only)",0,"list"],
-#  ["os_version","",0,"OS Version",True,"ex: rhel4"],
+  ["os_version","",0,"OS Version",True,"ex: rhel4"],
   ["uid",None,0,"",False,"",0,"str"],
   ["environment",{},0,"Environment Variables",True,"Use these environment variables during commands (key=value, space delimited)",0,"dict"],
   ["createrepo_flags",'<<inherit>>',0,"Createrepo Flags",True,"Flags to use with createrepo",0,"dict"],
@@ -55,10 +56,17 @@ class Repo(item.Item):
 
     TYPE_NAME = _("repo")
     COLLECTION_TYPE = "repo"
+    breed = None
 
     def Factory(config,seed_data):
-        if seed_data.has_key('breed'):
-            obj = Repo(config)
+        if seed_data.get( 'breed' ) == "rsync" :
+            obj = RsyncRepo(config)
+        if seed_data.get( 'breed' ) == "yum" :
+            obj = YumRepo(config)
+        elif seed_data.get( 'breed' ) == "rhn" :
+            obj = RhnRepo(config)
+        elif seed_data.get( 'breed' ) == "apt" :
+            obj = AptRepo(config)
         else:
             obj = VoidRepo(config)
         obj.from_datastruct(seed_data)
@@ -164,12 +172,14 @@ class Repo(item.Item):
         return True
 
     def set_breed(self,breed):
-        if breed:
-            return utils.set_repo_breed(self,breed)
+        if breed != self.breed:
+            raise CX(_("Setting breed on %s to an invalid value (%s)") % (self,breed))
 
     def set_os_version(self,os_version):
         if os_version:
-            return utils.set_repo_os_version(self,os_version)
+            if not self.breed :
+               raise CX(_("cannot set --os-version without setting --breed first"))
+            self.os_version = os_version
 
     def set_arch(self,arch):
         """
@@ -204,4 +214,19 @@ class VoidRepo ( Repo ) :
          else:
              return "rsync"
 
+class RsyncRepo ( Repo ) :
+
+    breed = "rsync"
+
+class YumRepo ( Repo ) :
+
+    breed = "yum"
+
+class RhnRepo ( Repo ) :
+
+    breed = "rhn"
+
+class AptRepo ( Repo ) :
+
+    breed = "apt"
 

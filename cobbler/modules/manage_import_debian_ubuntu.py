@@ -194,9 +194,11 @@ class ImportDebianUbuntuManager ( ImportManagerBase ) :
 
       if "dists" not in fnames :
 
-        repodata = { 'breed':"apt" , 'arch':distro.arch , 'keep_updated':False , 'mirror_locally':False }
+        # FIXME : add to repodata the yumopts values
+        repodata = { 'arch':distro.arch , 'keep_updated':False , 'mirror_locally':False }
 
-        repo = item_repo.Repo.Factory(self.config,repodata)
+        repo = item_repo.AptRepo(self.config)
+        repo.from_datastruct(repodata)
         repo.yumopts["--ignore-release-gpg"] = ""
         repo.yumopts["--verbose"] = ""
         repo.set_name( distro.name )
@@ -204,7 +206,8 @@ class ImportDebianUbuntuManager ( ImportManagerBase ) :
         # NOTE : The location of the mirror should come from timezone
         repo.set_mirror( "http://ftp.%s.debian.org/debian/dists/%s" % ( 'us' , '@@suite@@' ) )
 
-        security_repo = item_repo.Repo.Factory(self.config,repodata)
+        security_repo = item_repo.AptRepo(self.config)
+        security_repo.from_datastruct(repodata)
         security_repo.yumopts["--ignore-release-gpg"] = ""
         security_repo.yumopts["--verbose"] = ""
         security_repo.set_name( distro.name + "-security" )
