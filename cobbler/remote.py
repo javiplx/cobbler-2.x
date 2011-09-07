@@ -2424,13 +2424,8 @@ def test_xmlrpc_rw():
    server.modify_repo(rid, "arch", "x86_64", token)
    server.modify_repo(rid, "mirror", "http://example.org/foo/x86_64", token)
    server.modify_repo(rid, "keep_updated", True, token)
-   server.modify_repo(rid, "priority", "50", token)
-   server.modify_repo(rid, "rpm_list", [], token)
-   server.modify_repo(rid, "createrepo_flags", "--verbose", token)
-   server.modify_repo(rid, "yumopts", {}, token)
    server.modify_repo(rid, "owners", [ "slash", "axl" ], token)
    server.modify_repo(rid, "mirror_locally", True, token)
-   server.modify_repo(rid, "environment", {}, token)
    server.modify_repo(rid, "comment", "...", token)
    server.save_repo(rid, token)
    

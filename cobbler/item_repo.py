@@ -43,13 +43,8 @@ FIELDS = [
   ["name","",0,"Name",True,"Ex: f10-i386-updates",0,"str"],
   ["owners","SETTINGS:default_ownership",0,"Owners",True,"Owners list for authz_ownership (space delimited)",[],"list"],
   ["parent",None,0,"",False,"",0,"str"],
-  ["rpm_list",[],0,"RPM List",True,"Mirror just these RPMs (yum only)",0,"list"],
   ["os_version","",0,"OS Version",True,"ex: rhel4"],
   ["uid",None,0,"",False,"",0,"str"],
-  ["environment",{},0,"Environment Variables",True,"Use these environment variables during commands (key=value, space delimited)",0,"dict"],
-  ["createrepo_flags",'<<inherit>>',0,"Createrepo Flags",True,"Flags to use with createrepo",0,"dict"],
-  ["priority",99,0,"Priority",True,"Value for yum priorities plugin, if installed",0,"int"],
-  ["yumopts",{},0,"Yum Options",True,"Options to write to yum config file",0,"dict"]
 ]
 
 class Repo(item.Item):
@@ -108,70 +103,6 @@ class Repo(item.Item):
     This allows the user to disable updates to a particular repo for whatever reason.
     """
         self.keep_updated = utils.input_boolean(keep_updated)
-        return True
-
-    def set_yumopts(self,options,inplace=False):
-        """
-        Kernel options are a space delimited list,
-        like 'a=b c=d e=f g h i=j' or a hash.
-        """
-        (success, value) = utils.input_string_or_hash(options,allow_multiples=False)
-        if not success:
-            raise CX(_("invalid yum options"))
-        else:
-            if inplace:
-                for key in value.keys():
-                    self.yumopts[key] = value[key]
-            else:
-                self.yumopts = value
-            return True
-
-    def set_environment(self,options,inplace=False):
-        """
-        Yum can take options from the environment.  This puts them there before
-        each reposync.
-        """
-        (success, value) = utils.input_string_or_hash(options,allow_multiples=False)
-        if not success:
-            raise CX(_("invalid environment options"))
-        else:
-            if inplace:
-                for key in value.keys():
-                    self.environment[key] = value[key]
-            else:
-                self.environment = value
-            return True
-
-
-    def set_priority(self,priority):
-        """
-        Set the priority of the repository.  1= highest, 99=default
-        Only works if host is using priorities plugin for yum.
-        """
-        try:
-           priority = int(str(priority))
-        except:
-           raise CX(_("invalid priority level: %s") % priority)
-        self.priority = priority
-        return True
-
-    def set_rpm_list(self,rpms):
-        """
-        Rather than mirroring the entire contents of a repository (Fedora Extras, for instance,
-        contains games, and we probably don't want those), make it possible to list the packages
-        one wants out of those repos, so only those packages + deps can be mirrored.
-        """
-        self.rpm_list = utils.input_string_or_list(rpms)
-        return True
-
-    def set_createrepo_flags(self,createrepo_flags):
-        """
-        Flags passed to createrepo when it is called.  Common flags to use would be
-        -c cache or -g comps.xml to generate group information.
-        """
-        if createrepo_flags is None:
-            createrepo_flags = ""
-        self.createrepo_flags = createrepo_flags
         return True
 
     def set_breed(self,breed):
@@ -249,14 +180,6 @@ class _RpmRepo ( Repo ) :
             line = "baseurl=http://${server}/cobbler/repo_mirror/%s\n" % self.name
   
             config_file.write(line)
-            # user may have options specific to certain yum plugins
-            # add them to the file
-            for x in self.yumopts:
-                config_file.write("%s=%s\n" % (x, self.yumopts[x]))
-                if x == "enabled":
-                    optenabled = True
-                if x == "gpgcheck":
-                    optgpgcheck = True
         else:
             mstr = self.mirror
             if mstr.startswith("/"):
@@ -270,7 +193,6 @@ class _RpmRepo ( Repo ) :
             config_file.write(line)
         if not optenabled:
             config_file.write("enabled=1\n")
-        config_file.write("priority=%s\n" % self.priority)
         # FIXME: potentially might want a way to turn this on/off on a per-repo basis
         if not optgpgcheck:
             config_file.write("gpgcheck=0\n")
@@ -505,11 +427,6 @@ class AptRepo ( Repo ) :
         # FIXME : flags should come from repo instead of being hardcoded
 
         rflags = "--passive --nocleanup"
-        for x in self.yumopts:
-            if self.yumopts[x]:
-                rflags += " %s %s" % ( x , self.yumopts[x] ) 
-            else:
-                rflags += " %s" % x 
         cmd = "%s %s %s %s" % (mirror_program, rflags, mirror_data, dest_path)
         if self.arch == "src":
             cmd = "%s --source" % cmd

@@ -709,14 +709,10 @@ def flatten(data):
     # this should not be done for everything
     if data is None:
         return None
-    if data.has_key("environment"):
-        data["environment"] = hash_to_string(data["environment"])
     if data.has_key("kernel_options"):
         data["kernel_options"] = hash_to_string(data["kernel_options"])
     if data.has_key("kernel_options_post"):
         data["kernel_options_post"] = hash_to_string(data["kernel_options_post"])
-    if data.has_key("yumopts"):
-        data["yumopts"]        = hash_to_string(data["yumopts"])
     if data.has_key("ks_meta"):
         data["ks_meta"] = hash_to_string(data["ks_meta"])
     if data.has_key("template_files"):
@@ -727,8 +723,6 @@ def flatten(data):
         data["fetchable_files"] = hash_to_string(data["fetchable_files"])
     if data.has_key("repos") and isinstance(data["repos"], list):
         data["repos"]   = " ".join(data["repos"])
-    if data.has_key("rpm_list") and isinstance(data["rpm_list"], list):
-        data["rpm_list"] = " ".join(data["rpm_list"])
 
     # note -- we do not need to flatten "interfaces" as koan does not expect
     # it to be a string, nor do we use it on a kernel options line, etc...

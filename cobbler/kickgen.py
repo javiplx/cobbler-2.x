@@ -175,7 +175,7 @@ class KickGen:
             # see if this is a source_repo or not
             repo_obj = self.api.find_repo(repo)
             if repo_obj is not None:
-                if not repo_obj.yumopts.has_key('enabled') or repo_obj.yumopts['enabled'] == '1':
+                   # FIXME : Before removal of yumopts, it was possible to have a repo disabled for inclusion here
                    if repo_obj.mirror_locally:
                        baseurl = "http://%s/cobbler/repo_mirror/%s" % (blended["http_server"], repo_obj.name)
                        if not included.has_key(baseurl):

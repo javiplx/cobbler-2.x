@@ -194,13 +194,10 @@ class ImportDebianUbuntuManager ( ImportManagerBase ) :
 
       if "dists" not in fnames :
 
-        # FIXME : add to repodata the yumopts values
         repodata = { 'arch':distro.arch , 'keep_updated':False , 'mirror_locally':False }
 
         repo = item_repo.AptRepo(self.config)
         repo.from_datastruct(repodata)
-        repo.yumopts["--ignore-release-gpg"] = ""
-        repo.yumopts["--verbose"] = ""
         repo.set_name( distro.name )
         repo.set_os_version( distro.os_version )
         # NOTE : The location of the mirror should come from timezone
@@ -208,8 +205,6 @@ class ImportDebianUbuntuManager ( ImportManagerBase ) :
 
         security_repo = item_repo.AptRepo(self.config)
         security_repo.from_datastruct(repodata)
-        security_repo.yumopts["--ignore-release-gpg"] = ""
-        security_repo.yumopts["--verbose"] = ""
         security_repo.set_name( distro.name + "-security" )
         security_repo.set_os_version( distro.os_version )
         # There are no official mirrors for security updates
