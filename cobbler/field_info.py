@@ -152,6 +152,7 @@ BLOCK_MAPPINGS = {
    "redhat_management_key"  : "Management",
    "redhat_management_server" : "Management",
    "mirror_locally"           : "General",
+   "repo_version"             : "General",
    "packages" : "Resources",
    "files"    : "Resources",
    "repos_enabled" : "Management",

@@ -43,7 +43,7 @@ FIELDS = [
   ["name","",0,"Name",True,"Ex: f10-i386-updates",0,"str"],
   ["owners","SETTINGS:default_ownership",0,"Owners",True,"Owners list for authz_ownership (space delimited)",[],"list"],
   ["parent",None,0,"",False,"",0,"str"],
-  ["os_version","",0,"OS Version",True,"ex: rhel4"],
+  ["repo_version","",0,"Repo/OS Version",True,"ex: rhel4",0,"str"],
   ["uid",None,0,"",False,"",0,"str"],
 ]
 
@@ -109,11 +109,11 @@ class Repo(item.Item):
         if breed != self.breed:
             raise CX(_("Setting breed on %s to an invalid value (%s)") % (self,breed))
 
-    def set_os_version(self,os_version):
-        if os_version:
+    def set_repo_version(self,repo_version):
+        if repo_version:
             if not self.breed :
-               raise CX(_("cannot set --os-version without setting --breed first"))
-            self.os_version = os_version
+               raise CX(_("cannot set --repo-version without setting --breed first"))
+            self.repo_version = repo_version
 
     def set_arch(self,arch):
         """
