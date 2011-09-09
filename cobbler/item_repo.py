@@ -389,56 +389,75 @@ class RhnRepo ( _RpmRepo ) :
 
         self.create_local_file(dest_path, logger)
 
-class AptRepo ( Repo ) :
 
-    breed = "apt"
+import repolib
+
+class RepoConf ( repolib.config.MirrorConf ) :
+
+    def __init__ ( self , repo ) :
+        repolib.config.MirrorConf.__init__( self , repo.name , repo , None )
+        self.update( { 'detached':True ,
+                 'class':"standard" , 'subdir':False , 'filters':{} ,
+                 'params':{ 'usegpg':False , 'pkgvflags':"SKIP_NONE" } } )
+        # NOTE : using dict(repolib.config.default_params) for params forces gpg verification
+
+    def read ( self , repo ) :
+        self['type'] = repo.breed
+        self['version'] = repo.repo_version
+        self['destdir'] = os.path.join(repo.settings.webdir,"repo_mirror",repo.name)
+        self['url'] = repo.mirror
+        if repo.arch :
+            self['architectures'] = (repo.arch,)
+
+
+class AptRepo ( Repo , RepoConf ) :
+
+    def __init__(self,config,is_subobject=False):
+        Repo.__init__(self,config,is_subobject)
+        self.breed = "apt"
+        RepoConf.__init__(self,self)
+
+    def from_datastruct(self,seed_data):
+        obj = Repo.from_datastruct(self,seed_data)
+        obj.read( obj )
+        return obj
+
+    def set_mirror(self,mirror):
+        Repo.set_mirror( self , mirror )
+        self['url'] = mirror
+        return True
+
+    def set_repo_version(self,repo_version):
+        Repo.set_repo_version( self , repo_version )
+        self['version'] = repo_version
+
+    def set_arch(self,arch):
+        self['architectures'] = ( arch ,)
+        return Repo.set_arch( self , arch )
 
     def sync(self, logger):
+        repolib.logger = logger
+        repo = repolib.debian_repository( self )
 
-        if self.rpm_list :
-            logger.warning("--rpm-list not yet supported on apt repos")
+        meta_files = repo.get_metafile()
+        if not meta_files or meta_files.values().count( False ) :
+            logger.error("cobbler reposync failed, some files not downloaded")
+            return
 
-        mirror_program = "/usr/bin/debmirror"
-        if not os.path.exists(mirror_program):
-            utils.die(logger,"no %s found, please install it"%(mirror_program))
+        repo.build_local_tree()
+        local_repodata = repo.write_master_file(meta_files)
 
-        if not self.arch:
-            utils.die(logger,"Architecture is required for apt repositories")
+        download_pkgs = repo.get_download_list()
+        download_pkgs.start()
+        missing_pkgs = {}
+        for subrepo in repo.subrepos.values() :
+            packages = subrepo.get_metafile( local_repodata )
+            if isinstance(packages,bool) or repo.mode == "metadata" :
+                continue
+            download , missing = subrepo.get_package_list( packages , {} , repo.filters )
+            download_pkgs.extend( download )
+            missing_pkgs.update( dict.fromkeys( missing ) )
 
-        # built destination path for the repo
-        dest_path = os.path.join("/var/www/cobbler/repo_mirror", self.name)
-         
-        mirror = self.mirror.replace("@@suite@@",self.os_version)
-
-        idx = mirror.find("://")
-        method = mirror[:idx]
-        mirror = mirror[idx+3:]
-
-        idx = mirror.find("/")
-        host = mirror[:idx]
-        mirror = mirror[idx+1:]
-
-        idx = mirror.rfind("/dists/")
-        suite = mirror[idx+7:]
-        mirror = mirror[:idx]
-
-        mirror_data = "--method=%s --host=%s --root=%s --dist=%s " % ( method , host , mirror , suite )
-
-        # FIXME : flags should come from repo instead of being hardcoded
-
-        rflags = "--passive --nocleanup"
-        cmd = "%s %s %s %s" % (mirror_program, rflags, mirror_data, dest_path)
-        if self.arch == "src":
-            cmd = "%s --source" % cmd
-        else:
-            arch = self.arch
-            if arch == "x86":
-               arch = "i386" # FIX potential arch errors
-            if arch == "x86_64":
-               arch = "amd64" # FIX potential arch errors
-            cmd = "%s --nosource -a %s" % (cmd, arch)
-                    
-        rc = utils.subprocess_call(logger, cmd)
-        if rc !=0:
-            utils.die(logger,"cobbler reposync failed")
+        download_pkgs.finish()
+        download_pkgs.join()
 

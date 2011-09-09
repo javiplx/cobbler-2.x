@@ -28,6 +28,7 @@ except:
 import time
 import os
 
+CRITICAL= "CRITICAL"
 ERROR   = "ERROR"
 WARNING = "WARNING"
 DEBUG   = "DEBUG"
@@ -51,6 +52,8 @@ class Logger:
           pass
 
       
+   def critical(self, msg):
+      self.__write(CRITICAL, msg)
 
    def warning(self, msg):
       self.__write(WARNING, msg)

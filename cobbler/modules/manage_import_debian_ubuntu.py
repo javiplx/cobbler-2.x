@@ -195,21 +195,21 @@ class ImportDebianUbuntuManager ( ImportManagerBase ) :
       if "dists" not in fnames :
 
         # BUG : breed must be specified
-        repodata = { 'breed':'apt' , 'arch':distro.arch , 'keep_updated':False , 'mirror_locally':False }
+        repodata = { 'arch':distro.arch , 'keep_updated':False , 'mirror_locally':False }
 
         repo = item_repo.AptRepo(self.config)
-        repo.from_datastruct(repodata)
         repo.set_name( distro.name )
         repo.set_repo_version( distro.os_version )
         # NOTE : The location of the mirror should come from timezone
-        repo.set_mirror( "http://ftp.%s.debian.org/debian/dists/@@suite@@" % 'us' )
+        repo.set_mirror( "http://ftp.%s.debian.org/debian/" % 'us' )
+        repo.from_datastruct(repodata)
 
         security_repo = item_repo.AptRepo(self.config)
-        security_repo.from_datastruct(repodata)
         security_repo.set_name( distro.name + "-security" )
         security_repo.set_repo_version( "%s/updates" % distro.os_version )
         # There are no official mirrors for security updates
-        security_repo.set_mirror( "http://security.debian.org/debian-security/dists/@@suite@@" )
+        security_repo.set_mirror( "http://security.debian.org/debian-security/" )
+        security_repo.from_datastruct(repodata)
 
         self.logger.info("Added repos for %s" % distro.name)
         repos  = self.config.repos()
