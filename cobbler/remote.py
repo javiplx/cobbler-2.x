@@ -878,7 +878,7 @@ class CobblerXMLRPCInterface:
                     breedname = attributes["breed"]
                 else :
                     breedname = obj.guess_breed(attributes["mirror"])
-                obj.from_datastruct( { 'breed':breedname } )
+                obj.breed = breedname
                 self.object_cache[handle] = (objtime , obj.make_clone())
         else:
             handle = self.get_item_handle(object_type, object_name)

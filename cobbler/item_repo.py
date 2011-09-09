@@ -64,8 +64,7 @@ class Repo(item.Item):
             obj = AptRepo(config)
         else:
             obj = VoidRepo(config)
-        obj.from_datastruct(seed_data)
-        return obj
+        return obj.from_datastruct(seed_data)
     Factory = staticmethod(Factory)
 
     def sync(self, logger):
